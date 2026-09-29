@@ -1,6 +1,6 @@
 [project]
 name = "xtr-orm"
-version = "1.4.0"
+version = "1.5.0"
 description = "Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection."
 readme = "README.md"
 requires-python = ">=3.11"
