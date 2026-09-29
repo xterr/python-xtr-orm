@@ -16,7 +16,7 @@ __all__ = ["MigrationsLatestCommand"]
 @as_command("orm:migrations:latest")
 @final
 class MigrationsLatestCommand(ConnectionCommand):
-    """Outputs the latest version."""
+    """Prints the revisions no other follows."""
 
     __slots__ = ()
 

@@ -16,7 +16,7 @@ __all__ = ["MigrationsGenerateCommand"]
 @as_command("orm:migrations:generate")
 @final
 class MigrationsGenerateCommand(ConnectionCommand):
-    """Generate a blank migration class."""
+    """Writes an empty revision to fill in by hand."""
 
     __slots__ = ()
 
@@ -43,5 +43,5 @@ class MigrationsGenerateCommand(ConnectionCommand):
         except MigrationError as error:
             io.error(escape(error.reason))
             return ExitCode.FAILURE
-        report_written(io, "Generated new migration class to", written, connection)
+        report_written(io, "Wrote the new revision to", written, connection)
         return ExitCode.SUCCESS

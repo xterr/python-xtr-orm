@@ -16,7 +16,7 @@ __all__ = ["MigrationsVersionCommand"]
 @as_command("orm:migrations:version")
 @final
 class MigrationsVersionCommand(ConnectionCommand):
-    """Manually add and delete migration versions from the version table."""
+    """Records revisions as applied or not, running nothing."""
 
     __slots__ = ()
 
@@ -58,8 +58,9 @@ class MigrationsVersionCommand(ConnectionCommand):
         if migrator is None:
             return ExitCode.FAILURE
         if not io.confirm(
-            "WARNING! You are about to add, delete or synchronize migration versions from the "
-            "version table that could result in data lost. Are you sure you wish to continue?",
+            "WARNING! You are about to record revisions as applied or not without running them, "
+            "which can leave the version table out of step with the schema. Are you sure you "
+            "wish to continue?",
             default=True,
         ):
             io.error("Migration cancelled!")

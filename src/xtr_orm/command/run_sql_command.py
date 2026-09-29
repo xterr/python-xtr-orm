@@ -16,7 +16,7 @@ __all__ = ["RunSqlCommand"]
 @as_command("orm:run-sql")
 @final
 class RunSqlCommand(ConnectionCommand):
-    """Executes arbitrary SQL directly from the command line."""
+    """Runs a statement and shows what it returned."""
 
     __slots__ = ()
 

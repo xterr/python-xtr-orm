@@ -57,10 +57,7 @@ async def test_applied_revisions_without_a_file_fail_only_when_asked(
     (migrations_directory / "a1.py").unlink()
 
     assert await tester.execute(["orm:migrations:up-to-date", "--list-migrations", *flags]) == code
-    assert (
-        "You have 1 previously executed migration in the database that is not a registered "
-        "migration."
-    ) in output(tester)
+    assert "1 applied revision has no revision file." in output(tester)
     assert ["a1", "migrated, not available", ""] in table_rows(tester)
 
 

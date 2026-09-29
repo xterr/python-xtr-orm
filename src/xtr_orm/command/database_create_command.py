@@ -17,7 +17,7 @@ __all__ = ["DatabaseCreateCommand"]
 @as_command("orm:database:create")
 @final
 class DatabaseCreateCommand(ConnectionCommand):
-    """Creates the configured database."""
+    """Creates a connection's database on its server."""
 
     __slots__ = ()
 

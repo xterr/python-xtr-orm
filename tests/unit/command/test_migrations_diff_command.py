@@ -27,7 +27,7 @@ async def test_it_writes_what_the_table_definitions_add(
     assert code == ExitCode.SUCCESS
     [written] = migrations_directory.glob("*.py")
     assert "create_table" in written.read_text(encoding="utf-8")
-    assert "Generated new migration class to" in output(tester)
+    assert "Wrote the new revision to" in output(tester)
 
 
 async def test_no_difference_fails_the_run_unless_allowed(tester: ApplicationTester) -> None:
@@ -35,7 +35,7 @@ async def test_no_difference_fails_the_run_unless_allowed(tester: ApplicationTes
     _ = await tester.execute(["orm:migrations:migrate", "-n"])
 
     assert await tester.execute(["orm:migrations:diff"]) == ExitCode.FAILURE
-    assert "No changes detected in your mapping information." in output(tester)
+    assert "Nothing differs between the database and the table definitions." in output(tester)
     assert await tester.execute(["orm:migrations:diff", "--allow-empty-diff"]) == ExitCode.SUCCESS
 
 

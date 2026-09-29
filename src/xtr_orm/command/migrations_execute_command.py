@@ -24,7 +24,7 @@ __all__ = ["MigrationsExecuteCommand"]
 @as_command("orm:migrations:execute")
 @final
 class MigrationsExecuteCommand(ConnectionCommand):
-    """Execute one or more migration versions up or down manually."""
+    """Runs chosen revisions alone, each up or down."""
 
     __slots__ = ()
 
@@ -67,8 +67,8 @@ class MigrationsExecuteCommand(ConnectionCommand):
             return ExitCode.FAILURE
         try:
             if write_sql is not None:
-                save_sql(io, write_sql, await migrator.execute_sql(versions, direction))
-                return ExitCode.SUCCESS
+                saved = save_sql(io, write_sql, await migrator.execute_sql(versions, direction))
+                return ExitCode.SUCCESS if saved else ExitCode.FAILURE
             planned = await migrator.plan_for_versions(versions, direction)
             if dry_run:
                 report_plan(io, planned)

@@ -28,7 +28,7 @@ async def test_it_writes_an_empty_revision_and_says_how_to_run_it(
     assert code == ExitCode.SUCCESS
     [written] = migrations_directory.glob("*.py")
     shown = output(tester)
-    assert f'Generated new migration class to "{written}"' in shown
+    assert f'Wrote the new revision to "{written}"' in shown
     assert "orm:migrations:execute --up" in shown
     assert "orm:migrations:execute --down" in shown
     assert written.name.endswith("_add_prices.py")

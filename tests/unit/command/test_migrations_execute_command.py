@@ -131,3 +131,15 @@ async def test_the_sql_is_written_to_a_file_and_nothing_runs(
     assert code == ExitCode.SUCCESS
     assert "CREATE TABLE t_a1" in target.read_text(encoding="utf-8")
     assert "t_a1" not in await table_names(engine)
+
+
+async def test_sql_that_cannot_be_written_fails_the_run(
+    tester: ApplicationTester, migrations_directory: Path, tmp_path: Path
+) -> None:
+    _chain(migrations_directory)
+    target = tmp_path / "missing" / "out.sql"
+
+    code = await tester.execute(["orm:migrations:execute", "a1", "--write-sql", str(target)])
+
+    assert code == ExitCode.FAILURE
+    assert str(target) in output(tester)

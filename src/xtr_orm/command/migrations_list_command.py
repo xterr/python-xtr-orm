@@ -17,7 +17,7 @@ __all__ = ["MigrationsListCommand"]
 @as_command("orm:migrations:list")
 @final
 class MigrationsListCommand(ConnectionCommand):
-    """Display a list of all available migrations and their status."""
+    """Lists every revision and whether it is applied."""
 
     __slots__ = ()
 

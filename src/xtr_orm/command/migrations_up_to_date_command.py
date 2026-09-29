@@ -8,7 +8,7 @@ from xtr_console import ConsoleStyle, ExitCode, Option, as_command, escape
 
 from xtr_orm.exception import MigrationError
 
-from .connection_command import ConnectionCommand
+from .connection_command import ConnectionCommand, without_a_file
 
 __all__ = ["MigrationsUpToDateCommand"]
 
@@ -19,7 +19,7 @@ _UNREGISTERED: Final = 2
 @as_command("orm:migrations:up-to-date")
 @final
 class MigrationsUpToDateCommand(ConnectionCommand):
-    """Tells you if your schema is up-to-date."""
+    """Tells whether every revision is applied."""
 
     __slots__ = ()
 
@@ -62,12 +62,7 @@ class MigrationsUpToDateCommand(ConnectionCommand):
             io.error(f"Out-of-date! {new} migration{are} available to execute.")
             code = ExitCode.FAILURE
         if unregistered:
-            io.error(
-                f"You have {unregistered} previously executed "
-                f"migration{'' if unregistered == 1 else 's'} in the database that "
-                f"{'is not a' if unregistered == 1 else 'are not'} registered "
-                f"migration{'' if unregistered == 1 else 's'}.",
-            )
+            io.error(without_a_file(unregistered))
             if fail_on_unregistered:
                 code = _UNREGISTERED
         if list_migrations:

@@ -16,7 +16,7 @@ __all__ = ["MigrationsCurrentCommand"]
 @as_command("orm:migrations:current")
 @final
 class MigrationsCurrentCommand(ConnectionCommand):
-    """Outputs the current version."""
+    """Prints the revisions the database is at."""
 
     __slots__ = ()
 

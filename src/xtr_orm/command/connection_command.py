@@ -95,13 +95,21 @@ def report_results(io: ConsoleStyle, results: Sequence[ExecutionResult]) -> None
         io.text(f"  {verb} {escape(result.version)} ({result.duration:.3f}s)")
 
 
-def save_sql(io: ConsoleStyle, target: str, sql: str) -> None:
-    """Write ``sql`` to ``target`` — a file, or a directory to put a dated file in."""
+def save_sql(io: ConsoleStyle, target: str, sql: str) -> bool:
+    """Write ``sql`` to ``target`` — a file, or a directory to put a dated file in.
+
+    Returns whether it was written; when not, ``io`` says why.
+    """
     path = Path(target)
     if path.is_dir():
         path /= f"migration_{datetime.now().astimezone():%Y%m%d%H%M%S}.sql"
-    _ = path.write_text(sql, encoding="utf-8")
+    try:
+        _ = path.write_text(sql, encoding="utf-8")
+    except OSError as error:
+        io.error(f'Could not write the migration SQL to "{escape(str(path))}": {error.strerror}')
+        return False
     io.success(f'Wrote the migration SQL to "{escape(str(path))}".')
+    return True
 
 
 def report_written(
@@ -123,6 +131,13 @@ def report_count(io: ConsoleStyle, results: Sequence[ExecutionResult]) -> None:
     total = sum(result.duration for result in results)
     plural = "" if len(results) == 1 else "s"
     io.success(f"{len(results)} migration{plural} executed in {total:.3f}s.")
+
+
+def without_a_file(count: int) -> str:
+    """Say how many applied revisions have no revision file."""
+    if count == 1:
+        return "1 applied revision has no revision file."
+    return f"{count} applied revisions have no revision file."
 
 
 def format_version(version: str, description: str | None) -> str:

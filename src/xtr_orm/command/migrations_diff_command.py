@@ -16,7 +16,7 @@ __all__ = ["MigrationsDiffCommand"]
 @as_command("orm:migrations:diff")
 @final
 class MigrationsDiffCommand(ConnectionCommand):
-    """Generate a migration by comparing your current database to your mapping information."""
+    """Writes a revision of what differs between the database and the table definitions."""
 
     __slots__ = ()
 
@@ -54,7 +54,7 @@ class MigrationsDiffCommand(ConnectionCommand):
             io.error(escape(error.reason))
             return ExitCode.FAILURE
         if written is None:
-            io.error("No changes detected in your mapping information.")
+            io.error("Nothing differs between the database and the table definitions.")
             return ExitCode.FAILURE
-        report_written(io, "Generated new migration class to", written, connection)
+        report_written(io, "Wrote the new revision to", written, connection)
         return ExitCode.SUCCESS

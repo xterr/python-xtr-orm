@@ -16,7 +16,7 @@ __all__ = ["MigrationsStatusCommand"]
 @as_command("orm:migrations:status")
 @final
 class MigrationsStatusCommand(ConnectionCommand):
-    """View the status of a set of migrations."""
+    """Shows where the database stands against its revisions."""
 
     __slots__ = ()
 

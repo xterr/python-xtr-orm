@@ -17,7 +17,7 @@ __all__ = ["DatabaseDropCommand"]
 @as_command("orm:database:drop")
 @final
 class DatabaseDropCommand(ConnectionCommand):
-    """Drops the configured database."""
+    """Drops a connection's database from its server."""
 
     __slots__ = ()
 

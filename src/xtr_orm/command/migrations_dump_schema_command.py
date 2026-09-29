@@ -16,7 +16,7 @@ __all__ = ["MigrationsDumpSchemaCommand"]
 @as_command("orm:migrations:dump-schema")
 @final
 class MigrationsDumpSchemaCommand(ConnectionCommand):
-    """Dump the schema for your database to a migration."""
+    """Writes a first revision creating every table an existing database has."""
 
     __slots__ = ()
 
@@ -50,7 +50,7 @@ class MigrationsDumpSchemaCommand(ConnectionCommand):
         except MigrationError as error:
             io.error(escape(error.reason))
             return ExitCode.FAILURE
-        report_written(io, "Dumped your schema to a new migration class at", written, connection)
+        report_written(io, "Wrote the schema to a new revision at", written, connection)
         option = f" --connection {escape(connection)}" if connection else ""
         io.text(f"To use this as a rollup migration you can use orm:migrations:rollup{option}")
         return ExitCode.SUCCESS

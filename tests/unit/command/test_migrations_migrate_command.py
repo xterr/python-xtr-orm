@@ -114,9 +114,21 @@ async def test_the_sql_written_to_a_directory_gets_a_dated_file(
     assert "CREATE TABLE t_b2" in written.read_text(encoding="utf-8")
 
 
+async def test_sql_that_cannot_be_written_fails_the_run(
+    tester: ApplicationTester, migrations_directory: Path, tmp_path: Path
+) -> None:
+    _chain(migrations_directory)
+    target = tmp_path / "missing" / "out.sql"
+
+    code = await tester.execute(["orm:migrations:migrate", "--write-sql", str(target)])
+
+    assert code == ExitCode.FAILURE
+    assert str(target) in output(tester)
+
+
 async def test_no_revision_at_all_fails_unless_allowed(tester: ApplicationTester) -> None:
     assert await tester.execute(["orm:migrations:migrate", "-n"]) == ExitCode.FAILURE
-    assert "there are no registered migrations" in output(tester)
+    assert "there are no revision files" in output(tester)
 
     code = await tester.execute(["orm:migrations:migrate", "-n", "--allow-no-migration"])
     assert code == ExitCode.SUCCESS
@@ -135,7 +147,7 @@ async def test_applied_revisions_without_a_file_are_confirmed_first(
 
     assert code == ExitCode.FAILURE
     shown = output(tester)
-    assert "previously executed migrations in the database that are not registered" in shown
+    assert "1 applied revision has no revision file." in shown
     assert "Migration cancelled!" in shown
 
 

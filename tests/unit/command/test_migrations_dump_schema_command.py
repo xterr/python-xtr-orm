@@ -33,7 +33,7 @@ async def test_it_writes_the_existing_tables_and_says_how_to_record_them(
     assert "legacy" in source
     assert "other" not in source
     shown = output(tester)
-    assert "Dumped your schema to a new migration class at" in shown
+    assert "Wrote the schema to a new revision at" in shown
     assert "To use this as a rollup migration you can use orm:migrations:rollup" in shown
 
 

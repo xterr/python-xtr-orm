@@ -16,7 +16,7 @@ __all__ = ["MigrationsRollupCommand"]
 @as_command("orm:migrations:rollup")
 @final
 class MigrationsRollupCommand(ConnectionCommand):
-    """Rollup migrations by deleting all tracked versions and insert the one version that exists."""
+    """Records the single remaining revision as all the database has applied."""
 
     __slots__ = ()
 

@@ -15,6 +15,7 @@ from .connection_command import (
     report_plan,
     report_results,
     save_sql,
+    without_a_file,
 )
 
 __all__ = ["MigrationsMigrateCommand"]
@@ -25,7 +26,7 @@ _LATEST: Final = frozenset({"latest", "head", "heads"})
 @as_command("orm:migrations:migrate")
 @final
 class MigrationsMigrateCommand(ConnectionCommand):
-    """Execute a migration to a specified version or the latest available version."""
+    """Brings the database to a revision, up or down."""
 
     __slots__ = ()
 
@@ -67,15 +68,12 @@ class MigrationsMigrateCommand(ConnectionCommand):
                     return ExitCode.SUCCESS
                 io.error(
                     f'The version "{escape(version)}" couldn\'t be reached, '
-                    "there are no registered migrations.",
+                    "there are no revision files.",
                 )
                 return ExitCode.FAILURE
             unregistered = len(status.executed_unavailable)
             if unregistered:
-                io.warning(
-                    f"You have {unregistered} previously executed migrations in the database "
-                    "that are not registered migrations.",
-                )
+                io.warning(without_a_file(unregistered))
                 if not io.confirm("Are you sure you wish to continue?", default=True):
                     io.error("Migration cancelled!")
                     return ExitCode.FAILURE
@@ -90,8 +88,8 @@ class MigrationsMigrateCommand(ConnectionCommand):
                 io.success(message)
                 return ExitCode.SUCCESS
             if write_sql is not None:
-                save_sql(io, write_sql, await migrator.migrate_sql(version))
-                return ExitCode.SUCCESS
+                saved = save_sql(io, write_sql, await migrator.migrate_sql(version))
+                return ExitCode.SUCCESS if saved else ExitCode.FAILURE
             if dry_run:
                 report_plan(io, plans)
                 io.note("Dry run: nothing was executed.")
