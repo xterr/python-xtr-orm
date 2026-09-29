@@ -118,7 +118,9 @@ class ConnectionConfig:
         replicas={"replica1": env("DATABASE_REPLICA_URL")},
         engine_options={"pool_size": 10, "pool_pre_ping": True},
         session_options={"expire_on_commit": False},
-        migrations=MigrationsConfig(render_as_batch=True),
+        migrations=MigrationsConfig(
+            directory="%kernel.project_dir%/migrations", render_as_batch=True
+        ),
     )
     ```
 

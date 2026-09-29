@@ -22,7 +22,9 @@ class ExecutedMigration:
 
     Attributes:
         version: The revision's identifier.
-        executed_at: When it was applied, by the database's clock.
+        executed_at: When it was applied, by the database's clock — with a
+            time zone where the column keeps one (PostgreSQL), naive
+            elsewhere: UTC on SQLite, the session's time zone on MySQL.
         execution_time: How long it took, in seconds.
     """
 

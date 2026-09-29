@@ -50,7 +50,9 @@ class MigrationsConfig:
 
     Attributes:
         directory: Where revision files are read from and written to; created
-            when the first one is written.
+            when the first one is written. A relative path is relative to the
+            working directory — under a kernel, start it with
+            ``%kernel.project_dir%``.
         version_table: The table holding the database's current revisions.
         version_table_schema: The schema of both tables; the connection's
             default when ``None``.

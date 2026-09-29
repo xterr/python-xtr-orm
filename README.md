@@ -113,7 +113,7 @@ the files, not its schema against your models; `diff` compares those.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `directory` | `"migrations"` | Where revision files are read and written |
+| `directory` | `"migrations"` | Where revision files are read and written; a relative path is relative to the working directory — under a kernel, start it with `%kernel.project_dir%` |
 | `version_table` / `history_table` | `"alembic_version"` / `"alembic_version_history"` | The two tables |
 | `version_table_schema` | `None` | Their schema; the connection's default when `None` |
 | `file_template` | `"{year}{month}{day}{hour}{minute}{second}_{rev}_{slug}"` | How a file is named; also `{epoch}` |
@@ -367,8 +367,8 @@ MessageBusConfig(
 | Name | Class | Does | Arguments |
 |---|---|---|---|
 | `orm_transaction` | `TransactionMiddleware` | Runs every handler of a message in one transaction, committed once they all succeeded and rolled back otherwise; a failure drops the other handlers' handled stamps, so a retry runs them all again | `connection_name`, the default connection when left out |
-| `orm_close_connection` | `CloseConnectionMiddleware` | Closes the connections once a worker handled a message it consumed, so an idle worker holds none — once the last, when it handles several at once | `connection_names`, every connection when left out |
-| `orm_open_transaction_logger` | `OpenTransactionLoggerMiddleware` | Logs an error — to the application's logger when the logging bundle is active — when a handler began a transaction — `begin()`, `begin_nested()` — and left it open | `connection_names`, every connection when left out |
+| `orm_close_connection` | `CloseConnectionMiddleware` | Closes the connections once a worker handled a message it consumed, so an idle worker holds none — once the last, when it handles several at once | `connection_names`, every connection in use — its engine built — when left out |
+| `orm_open_transaction_logger` | `OpenTransactionLoggerMiddleware` | Logs an error — to the application's logger when the logging bundle is active — when a handler began a transaction — `begin()`, `begin_nested()` — and left it open, in a message that was handled | `connection_names`, every connection in use — its engine built — when left out |
 
 - **One session per message.** The messenger bundle makes every message a unit of work, and a
   scoped service — the session, a repository built on it — is the unit's: every handler of
@@ -424,6 +424,11 @@ Every error derives from `OrmError`.
 
 ## Known limitations
 
+- **Migrations take no lock.** Two processes migrating one database at once — two deploys
+  starting together — both run the same revisions; run `orm:migrations:migrate` from one
+  place, before the application starts.
+- **Applied times follow the database.** `executed_at` has a time zone on PostgreSQL and is
+  naive elsewhere: UTC on SQLite, the session's time zone on MySQL.
 - **advanced-alchemy's model registry is process-wide.** Its `metadata_registry` maps a
   `bind_key` to table definitions for the whole process, so two kernels in one process share
   it. Give a connection its `metadata` explicitly to keep a kernel's diff to its own models.
