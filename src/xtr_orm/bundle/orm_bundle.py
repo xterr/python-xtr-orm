@@ -90,7 +90,7 @@ class OrmBundle(Bundle[OrmConfig]):
         if not bundle_active(builder, "logging"):
             return
         # Logging is an optional peer, importable only once it is active.
-        from xtr_logging.bundle import LoggingConfig  # noqa: PLC0415
+        from xtr_logging.bundle import LoggingConfig  # noqa: PLC0415 — optional peer
 
         def add_orm_channel(config: LoggingConfig) -> LoggingConfig:
             return config.with_channels(ORM_CHANNEL)
