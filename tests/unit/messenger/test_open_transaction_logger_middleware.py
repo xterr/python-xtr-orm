@@ -36,6 +36,10 @@ def _logged() -> tuple[Logger, TestHandler]:
     return Logger("app", [handler]), handler
 
 
+async def _handled(envelope: Envelope) -> Envelope:
+    return envelope
+
+
 async def test_a_transaction_a_handler_began_and_left_open_is_logged(sessions: Sessions) -> None:
     logger, handler = _logged()
     middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
@@ -50,6 +54,20 @@ async def test_a_transaction_a_handler_began_and_left_open_is_logged(sessions: S
     assert record.level is Level.ERROR
     assert record.message == "A handler opened a transaction but did not close it."
     assert record.context == {"connections": ["reports"], "message": "message"}
+
+
+async def test_a_transaction_left_open_by_a_failing_handler_is_not(sessions: Sessions) -> None:
+    logger, handler = _logged()
+    middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
+
+    async def fail_inside(envelope: Envelope) -> Envelope:
+        _ = await sessions.by_name["default"].begin_nested()
+        raise LookupError(envelope)
+
+    with pytest.raises(LookupError):
+        _ = await middleware.handle(Envelope("message"), Then(fail_inside))
+
+    assert handler.records == ()
 
 
 async def test_a_transaction_the_session_began_by_itself_is_not(sessions: Sessions) -> None:
@@ -79,6 +97,32 @@ async def test_a_transaction_closed_before_the_end_is_not(sessions: Sessions) ->
     _ = await middleware.handle(Envelope("message"), Then(commit))
 
     assert handler.records == ()
+
+
+async def test_a_connection_not_in_use_is_not_checked(sessions: Sessions) -> None:
+    logger, handler = _logged()
+    sessions.in_use.discard("reports")
+    middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
+
+    _ = await middleware.handle(Envelope("message"), Then(_handled))
+
+    assert handler.records == ()
+
+
+async def test_a_connection_the_message_put_in_use_is_checked(sessions: Sessions) -> None:
+    logger, handler = _logged()
+    sessions.in_use.discard("reports")
+    middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
+
+    async def leave_open(envelope: Envelope) -> Envelope:
+        sessions.in_use.add("reports")
+        _ = await sessions.by_name["reports"].begin()
+        return envelope
+
+    _ = await middleware.handle(Envelope("message"), Then(leave_open))
+
+    [record] = handler.records
+    assert record.context == {"connections": ["reports"], "message": "message"}
 
 
 async def test_only_the_connections_named_are_checked(sessions: Sessions) -> None:

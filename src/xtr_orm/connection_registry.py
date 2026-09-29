@@ -33,6 +33,7 @@ class _Connection:
     database: Callable[[], Awaitable[DatabaseManager]]
     session: Callable[[], Awaitable[AsyncSession]] | None
     close: Callable[[], Awaitable[None]] | None
+    in_use: Callable[[], bool] | None
 
 
 @final
@@ -83,6 +84,7 @@ class ConnectionRegistry:
         database: DatabaseManager | Callable[[], Awaitable[DatabaseManager]],
         session: Callable[[], Awaitable[AsyncSession]] | None = None,
         close: Callable[[], Awaitable[None]] | None = None,
+        in_use: Callable[[], bool] | None = None,
     ) -> None:
         """Add the connection ``name``, or replace it.
 
@@ -95,6 +97,8 @@ class ConnectionRegistry:
                 without it, :meth:`session` is refused.
             close: What closes the connection; its engine is disposed when
                 left out.
+            in_use: Whether the connection is in use — its engine built;
+                without it, the connection always is. See :meth:`in_use`.
 
         Raises:
             InvalidArgumentError: When ``name`` is empty.
@@ -107,11 +111,25 @@ class ConnectionRegistry:
             database=_provider(database, DatabaseManager),
             session=session,
             close=close,
+            in_use=in_use,
         )
 
     def names(self) -> tuple[str, ...]:
         """Every connection's name, in the order registered."""
         return tuple(self._connections)
+
+    def in_use(self) -> tuple[str, ...]:
+        """The names of the connections in use, in the order registered.
+
+        What the message bus middleware act on unless given names: a
+        connection nothing has used has no session to check and no pool to
+        close, and opening it to find out would read its configuration.
+        """
+        return tuple(
+            name
+            for name, connection in self._connections.items()
+            if connection.in_use is None or connection.in_use()
+        )
 
     def has(self, name: str | None = None) -> bool:
         """Whether the connection ``name`` — the default one when ``None`` — exists."""

@@ -46,6 +46,26 @@ async def test_a_consumed_message_closes_every_connection(sessions: Sessions) ->
     assert sessions.closed == ["default", "reports"]
 
 
+async def test_a_connection_not_in_use_is_not_closed(sessions: Sessions) -> None:
+    sessions.in_use.discard("reports")
+
+    _ = await CloseConnectionMiddleware(sessions.registry).handle(CONSUMED, Then(_handled))
+
+    assert sessions.closed == ["default"]
+
+
+async def test_a_connection_the_message_put_in_use_is_closed(sessions: Sessions) -> None:
+    sessions.in_use.discard("reports")
+
+    async def use_reports(envelope: Envelope) -> Envelope:
+        sessions.in_use.add("reports")
+        return envelope
+
+    _ = await CloseConnectionMiddleware(sessions.registry).handle(CONSUMED, Then(use_reports))
+
+    assert sessions.closed == ["default", "reports"]
+
+
 async def test_only_the_connections_named_are_closed(sessions: Sessions) -> None:
     middleware = CloseConnectionMiddleware(sessions.registry, connection_names="reports")
 

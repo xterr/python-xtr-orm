@@ -73,6 +73,22 @@ async def test_it_names_its_connections_in_the_order_registered(
     assert not registry.has("other")
 
 
+async def test_it_names_the_connections_in_use_every_one_without_a_way_to_tell(
+    engine: AsyncEngine, migrator: Migrator
+) -> None:
+    database = DatabaseManager("sqlite+aiosqlite://")
+    registry = ConnectionRegistry()
+    registry.register("main", engine=engine, migrator=migrator, database=database)
+    registry.register(
+        "idle", engine=engine, migrator=migrator, database=database, in_use=lambda: False
+    )
+    registry.register(
+        "busy", engine=engine, migrator=migrator, database=database, in_use=lambda: True
+    )
+
+    assert registry.in_use() == ("main", "busy")
+
+
 async def test_an_unknown_connection_is_refused_naming_the_known_ones(
     engine: AsyncEngine, migrator: Migrator
 ) -> None:

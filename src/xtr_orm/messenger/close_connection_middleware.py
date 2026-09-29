@@ -41,7 +41,7 @@ class CloseConnectionMiddleware(MiddlewareInterface):
         connections: ConnectionRegistry,
         connection_names: str | Sequence[str] = (),
     ) -> None:
-        """Close ``connection_names`` — every connection when none is given."""
+        """Close ``connection_names`` — every connection in use when none is given."""
         self._connections = connections
         self._consumed = 0
         self._connection_names = (
@@ -58,8 +58,7 @@ class CloseConnectionMiddleware(MiddlewareInterface):
         Raises:
             UnknownConnectionError: When a connection named is not registered.
         """
-        names = self._connection_names or self._connections.names()
-        for name in names:
+        for name in self._connection_names:
             if not self._connections.has(name):
                 raise UnknownConnectionError(name, self._connections.names())
         if envelope.last(ReceivedStamp) is None:
@@ -71,5 +70,5 @@ class CloseConnectionMiddleware(MiddlewareInterface):
         finally:
             self._consumed -= 1
             if self._consumed == 0:
-                for name in names:
+                for name in self._connection_names or self._connections.in_use():
                     await self._connections.close(name)

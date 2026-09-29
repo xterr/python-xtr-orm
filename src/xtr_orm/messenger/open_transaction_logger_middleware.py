@@ -35,7 +35,8 @@ class OpenTransactionLoggerMiddleware(MiddlewareInterface):
 
     A transaction counts when a handler began it — ``begin()`` or
     ``begin_nested()`` on the unit of work's session — not when the session
-    began one by itself for a query.
+    began one by itself for a query. Only a message that was handled is
+    checked: one that failed leaves its transaction to be rolled back.
     """
 
     __slots__ = ("_connection_names", "_connections", "_logger")
@@ -46,7 +47,7 @@ class OpenTransactionLoggerMiddleware(MiddlewareInterface):
         logger: LoggerInterface = _DISCARD,
         connection_names: str | Sequence[str] = (),
     ) -> None:
-        """Check ``connection_names`` — every connection when none is given — logging to ``logger``.
+        """Check ``connection_names`` — every one in use when none is given — logging to ``logger``.
 
         Under a container, ``logger`` is the application's logger when the
         logging bundle is active; otherwise what is found goes nowhere.
@@ -62,20 +63,27 @@ class OpenTransactionLoggerMiddleware(MiddlewareInterface):
         """Run the rest of the chain, then log each connection left with a transaction open."""
         if _handling.get():
             return await stack.next().handle(envelope, stack)
-        names = self._connection_names or self._connections.names()
-        sessions = {name: await self._connections.session(name) for name in names}
-        initial = {name: _opened(session) for name, session in sessions.items()}
+        initial = {
+            name: _opened(await self._connections.session(name))
+            for name in self._connection_names or self._connections.in_use()
+        }
         token = _handling.set(True)
         try:
-            return await stack.next().handle(envelope, stack)
+            handled = await stack.next().handle(envelope, stack)
         finally:
             _handling.reset(token)
-            left = [name for name, session in sessions.items() if _opened(session) > initial[name]]
-            if left:
-                self._logger.error(
-                    "A handler opened a transaction but did not close it.",
-                    {"connections": left, "message": envelope.message},
-                )
+        # Read again: a connection the handlers put in use is checked too.
+        left = [
+            name
+            for name in self._connection_names or self._connections.in_use()
+            if _opened(await self._connections.session(name)) > initial.get(name, 0)
+        ]
+        if left:
+            self._logger.error(
+                "A handler opened a transaction but did not close it.",
+                {"connections": left, "message": envelope.message},
+            )
+        return handled
 
 
 def _opened(session: AsyncSession) -> int:
