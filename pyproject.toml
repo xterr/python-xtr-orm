@@ -1,6 +1,6 @@
 [project]
 name = "xtr-orm"
-version = "1.5.0"
+version = "2.0.0"
 description = "Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,7 +26,7 @@ dependencies = [
     "alembic>=1.20",
     "sqlalchemy[asyncio]>=2.0.41",
     "typing-extensions>=4.4",
-    "xtr-logging-contracts>=1.0,<2",
+    "xtr-logging-contracts>=2.0,<3",
 ]
 
 [project.optional-dependencies]
@@ -40,14 +40,14 @@ mysql = [
     "asyncmy>=0.2.9",
 ]
 di = [
-    "xtr-dependency-injection>=1.0,<2",
-    "xtr-service-contracts>=1.0,<2",
+    "xtr-dependency-injection>=2.0,<3",
+    "xtr-service-contracts>=2.0,<3",
 ]
 console = [
-    "xtr-console>=1.0,<2",
+    "xtr-console>=2.0,<3",
 ]
 messenger = [
-    "xtr-messenger>=1.0,<2",
+    "xtr-messenger>=2.0,<3",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
@@ -65,11 +65,11 @@ dev = [
     "ty>=0.0.83",
     # Every test runs on SQLite files under the test's own directory: no server.
     "aiosqlite>=0.20",
-    "xtr-console>=1.0,<2",
-    "xtr-dependency-injection>=1.0,<2",
-    "xtr-logging>=1.0,<2",
-    "xtr-messenger>=1.0,<2",
-    "xtr-service-contracts>=1.0,<2",
+    "xtr-console>=2.0,<3",
+    "xtr-dependency-injection>=2.0,<3",
+    "xtr-logging>=2.0,<3",
+    "xtr-messenger>=2.0,<3",
+    "xtr-service-contracts>=2.0,<3",
 ]
 
 [build-system]
