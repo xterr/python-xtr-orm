@@ -13,7 +13,13 @@ from sqlalchemy import Column, MetaData, String, Table, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import QueuePool
 from xtr_console import Application
-from xtr_dependency_injection import Injected, Kernel, Target, bind_callable
+from xtr_dependency_injection import (
+    Injected,
+    Kernel,
+    Target,
+    bind_callable,
+    current_unit_of_work,
+)
 from xtr_dependency_injection.testing import assert_zero_config
 from xtr_logging_contracts import NullLogger
 
@@ -84,6 +90,37 @@ async def test_every_connection_is_provided_by_name_and_the_default_without_one(
             assert await container.get(service) is await container.get(service, "default")
         maker = await container.get(async_sessionmaker[AsyncSession])
         assert maker is await container.get(async_sessionmaker[AsyncSession], "default")
+
+
+async def test_a_connection_reads_only_its_own_environment_variables(tmp_path: Path) -> None:
+    kernel = Kernel(
+        "tests.fixtures.app_orm",
+        env="test",
+        environ={
+            "ORM_TEST_URL": f"sqlite+aiosqlite:///{tmp_path / 'app.sqlite'}",
+            "ORM_TEST_MIGRATIONS": str(tmp_path / "migrations"),
+        },  # ORM_TEST_REPORTS_URL, the "reports" connection's, is not set
+    )
+
+    async def unit(session: Injected[AsyncSession]) -> int:
+        return cast("int", (await session.execute(text("select 1"))).scalar_one())
+
+    async with await kernel.boot() as booted:
+        registry = await booted.container.get(ConnectionRegistry)
+
+        assert (await registry.migrator()).name == "default"
+        assert (await registry.database()).database.endswith("app.sqlite")
+        assert await bind_callable(booted.container, unit, per_call_scope=True)() == 1
+
+
+async def test_a_connection_is_in_use_once_its_engine_is_built(tmp_path: Path) -> None:
+    async with await _kernel(tmp_path).boot() as booted:
+        registry = await booted.container.get(ConnectionRegistry)
+        assert registry.in_use() == ()
+
+        _ = await booted.container.get(AsyncEngine, "reports")
+
+        assert registry.in_use() == ("reports",)
 
 
 async def test_the_engine_and_sessions_take_their_configured_options(tmp_path: Path) -> None:
@@ -227,6 +264,20 @@ async def test_reads_go_to_a_replica_until_the_unit_writes(tmp_path: Path) -> No
 
         assert await bound() == ["replica", "primary", "primary"]
         assert await bound() == ["replica", "primary", "primary"]
+
+
+async def test_a_session_opened_after_a_write_leaves_the_unit_on_the_primary(
+    tmp_path: Path,
+) -> None:
+    async def unit(session: Injected[AsyncSession]) -> str:
+        _ = await session.execute(insert(_WHERE).values(name="written"))
+        opened = current_unit_of_work()
+        assert opened is not None
+        _ = await opened.get(AsyncSession, "kept")
+        return await _read(session)
+
+    async with await _replicated(tmp_path).boot() as booted:
+        assert await bind_callable(booted.container, unit, per_call_scope=True)() == "primary"
 
 
 async def test_keep_replica_goes_back_to_the_replicas_after_a_commit(tmp_path: Path) -> None:

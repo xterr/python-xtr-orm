@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncEngine
-from xtr_dependency_injection import Kernel
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from xtr_dependency_injection import Injected, Kernel, bind_callable
 from xtr_logging import TestHandler
 from xtr_logging.handler.handler_interface import HandlerInterface
 from xtr_logging_contracts import Level
@@ -97,6 +97,44 @@ async def test_every_handler_of_a_message_shares_one_session_and_commits_togethe
     seen = sessions.seen
     assert seen["first:a"] is seen["second:a"] is seen["third:a"]
     assert seen["first:a"] is not seen["first:b"]
+
+
+async def test_a_message_dispatched_by_a_command_shares_the_command_s_session(
+    booted: BootedKernel, engine: AsyncEngine
+) -> None:
+    sessions = await booted.container.get(Sessions)
+    given: list[AsyncSession] = []
+
+    async def command(session: Injected[AsyncSession], bus: Injected[MessageBusInterface]) -> None:
+        given.append(session)
+        _ = await bus.dispatch(Envelope(WriteNote("c")))
+
+    _ = await bind_callable(booted.container, command, per_call_scope=True)()
+
+    assert sessions.seen["first:c"] is given[0]
+    assert await _names(engine) == ["first:c", "second:c", "third:c"]
+
+
+async def test_a_worker_run_by_a_command_gives_each_message_a_session_of_its_own(
+    booted: BootedKernel, engine: AsyncEngine
+) -> None:
+    bus = await booted.container.get(MessageBusInterface)
+    sessions = await booted.container.get(Sessions)
+    given: list[AsyncSession] = []
+
+    async def consume(session: Injected[AsyncSession], workers: Injected[WorkerFactory]) -> None:
+        given.append(session)
+        await workers.worker(["jobs"]).run()
+
+    _ = await bus.dispatch(Envelope(QueuedNote("h")))
+    _ = await bus.dispatch(Envelope(QueuedNote("i")))
+    _ = await bind_callable(booted.container, consume, per_call_scope=True)()
+
+    first, second = sessions.seen["queued:h"], sessions.seen["queued:i"]
+    assert first is not second
+    assert given[0] is not first
+    assert given[0] is not second
+    assert await _names(engine) == ["queued:h", "queued:i"]
 
 
 async def test_one_failing_handler_rolls_back_every_handler(

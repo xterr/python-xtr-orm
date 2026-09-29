@@ -28,6 +28,8 @@ Nothing connects until a service is first used, and a URL given as
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from functools import partial
+from operator import contains
 from typing import Final, TypeVar, cast, final
 
 from advanced_alchemy.base import metadata_registry
@@ -108,19 +110,21 @@ class OrmBundle(Bundle[OrmConfig]):
                 RoutingAsyncSessionMaker if spec.replicas else async_sessionmaker[AsyncSession]
             )
             factories = (
-                (_alchemy_factory(name), "alchemy"),
+                (_alchemy_factory(name, spec), "alchemy"),
                 (_engine_factory(name), "engine"),
                 (
                     _routing_maker_factory(name) if spec.replicas else _session_maker_factory(name),
                     "session_maker",
                 ),
-                (_migrator_factory(name), "migrator"),
-                (_database_factory(name), "database"),
+                (_migrator_factory(name, spec), "migrator"),
+                (_database_factory(spec), "database"),
             )
             for factory, kind in factories:
                 _ = services.set(named_factory(factory, f"orm_{kind}_{name}"), qualifier=name)
             _ = services.set(
-                named_factory(_session_factory(name), f"orm_session_{name}"),
+                named_factory(
+                    _session_factory(name, routed=bool(spec.replicas)), f"orm_session_{name}"
+                ),
                 qualifier=name,
                 lifetime="scoped",
             )
@@ -128,7 +132,9 @@ class OrmBundle(Bundle[OrmConfig]):
                 for service in (*_PER_CONNECTION, maker_type):
                     services.alias(service, service, target_qualifier=name)
 
-        _ = services.set(_connection_registry)
+        _ = services.set(_ConnectionsInUse)
+        routed = {name: bool(spec.replicas) for name, spec in config.connections.items()}
+        _ = services.set(_connection_registry_factory(config.default_connection, routed))
 
         if bundle_active(builder, "console"):
             services.load("xtr_orm.command")
@@ -136,19 +142,30 @@ class OrmBundle(Bundle[OrmConfig]):
             services.load("xtr_orm.messenger")
 
 
+@final
+class _ConnectionsInUse:
+    """The connections whose database layer — and so engines — the container has built."""
+
+    __slots__ = ("names",)
+
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+
 def _alchemy_factory(
-    name: str,
-) -> Callable[[OrmConfig], AsyncIterator[SQLAlchemyAsyncConfig]]:
+    name: str, connection: ConnectionConfig
+) -> Callable[[_ConnectionsInUse], AsyncIterator[SQLAlchemyAsyncConfig]]:
     """Build the factory of the connection ``name``'s database layer configuration.
 
     It owns every engine of the connection — the primary's, and each
-    replica's — and disposes them when the container closes. It injects the
-    configuration rather than closing over it: the container hands it a copy
-    with every environment placeholder resolved.
+    replica's — and disposes them when the container closes. Like every
+    per-connection factory, it closes over its own connection's
+    configuration: the container resolves the environment placeholders of
+    that one alone, so a connection never reads another's variables.
     """
 
-    async def alchemy(config: OrmConfig) -> AsyncIterator[SQLAlchemyAsyncConfig]:
-        spec = config.connections[name].with_url_options()
+    async def alchemy(in_use: _ConnectionsInUse) -> AsyncIterator[SQLAlchemyAsyncConfig]:
+        spec = connection.with_url_options()
         # The options are forwarded by name, each checked against the target's
         # fields by ConnectionConfig; their values are the application's.
         engine = cast("Callable[..., EngineConfig]", EngineConfig)(**spec.engine_options)
@@ -169,6 +186,7 @@ def _alchemy_factory(
             routing_maker = cast("RoutingAsyncSessionMaker", built.create_session_maker())
             # One pool on the primary: the routing's, which migrations use too.
             built.engine_instance = routing_maker.primary_engine
+        in_use.names.add(name)
         try:
             yield built
         finally:
@@ -234,22 +252,19 @@ def _routing_maker_factory(
 
 
 def _session_factory(
-    name: str,
-) -> Callable[[OrmConfig, ContainerInterface], AsyncIterator[AsyncSession]]:
+    name: str, *, routed: bool
+) -> Callable[[ContainerInterface], AsyncIterator[AsyncSession]]:
     """Build the factory of the connection ``name``'s session, closed when its unit ends.
 
     Closing rolls back what was not committed: committing is the unit's job.
-    With replicas, a unit starts reading from them whatever the unit before
-    it wrote: sticking to the primary after a write is one unit's state.
+    With replicas — ``routed`` — a unit starts reading from them whatever the
+    unit before it wrote: sticking to the primary after a write is one unit's
+    state, forgotten when the unit ends — not when another of its sessions
+    opens, which would send the reads after a write to a replica.
     """
 
-    async def session(
-        config: OrmConfig, container: ContainerInterface
-    ) -> AsyncIterator[AsyncSession]:
-        routed = bool(config.connections[name].replicas)
+    async def session(container: ContainerInterface) -> AsyncIterator[AsyncSession]:
         maker = (await container.get(SQLAlchemyAsyncConfig, name)).create_session_maker()
-        if routed:
-            _ = stick_to_primary_var.set(False)
         try:
             async with maker() as opened:
                 yield opened
@@ -260,11 +275,13 @@ def _session_factory(
     return session
 
 
-def _migrator_factory(name: str) -> Callable[[OrmConfig, ContainerInterface], Awaitable[Migrator]]:
+def _migrator_factory(
+    name: str, connection: ConnectionConfig
+) -> Callable[[ContainerInterface], Awaitable[Migrator]]:
     """Build the factory of the connection ``name``'s migrator, logging to ``orm`` when it can."""
 
-    async def migrator(config: OrmConfig, container: ContainerInterface) -> Migrator:
-        spec = config.connections[name].with_url_options()
+    async def migrator(container: ContainerInterface) -> Migrator:
+        spec = connection.with_url_options()
         metadata = (
             spec.metadata if spec.metadata is not None else metadata_registry.get(spec.bind_key)
         )
@@ -282,11 +299,11 @@ def _migrator_factory(name: str) -> Callable[[OrmConfig, ContainerInterface], Aw
     return migrator
 
 
-def _database_factory(name: str) -> Callable[[OrmConfig], DatabaseManager]:
-    """Build the factory of the connection ``name``'s database manager."""
+def _database_factory(connection: ConnectionConfig) -> Callable[[], DatabaseManager]:
+    """Build the factory of ``connection``'s database manager."""
 
-    def database(config: OrmConfig) -> DatabaseManager:
-        spec: ConnectionConfig = config.connections[name].with_url_options()
+    def database() -> DatabaseManager:
+        spec = connection.with_url_options()
         connect_args = spec.engine_options.get("connect_args")
         return DatabaseManager(
             spec.url,
@@ -296,23 +313,34 @@ def _database_factory(name: str) -> Callable[[OrmConfig], DatabaseManager]:
     return database
 
 
-def _connection_registry(config: OrmConfig, container: ContainerInterface) -> ConnectionRegistry:
-    """Name every connection for the commands and middleware, each piece built only when needed.
+def _connection_registry_factory(
+    default: str, routed: dict[str, bool]
+) -> Callable[[ContainerInterface, _ConnectionsInUse], ConnectionRegistry]:
+    """Build the factory of the registry of every connection — each ``routed`` or not, by name."""
 
-    A connection's session is the one of the unit of work under way, and
-    closing it disposes every engine it has — its replicas' too.
-    """
-    registry = ConnectionRegistry(config.default_connection)
-    for name, spec in config.connections.items():
-        registry.register(
-            name,
-            engine=_provider(container, AsyncEngine, name),
-            migrator=_provider(container, Migrator, name),
-            database=_provider(container, DatabaseManager, name),
-            session=_unit_session(name),
-            close=_closer(container, name, routed=bool(spec.replicas)),
-        )
-    return registry
+    def connection_registry(
+        container: ContainerInterface, in_use: _ConnectionsInUse
+    ) -> ConnectionRegistry:
+        """Name every connection for the commands and middleware, each piece built when needed.
+
+        A connection's session is the one of the unit of work under way,
+        closing it disposes every engine it has — its replicas' too — and it
+        is in use once the container built its engines.
+        """
+        registry = ConnectionRegistry(default)
+        for name, replicated in routed.items():
+            registry.register(
+                name,
+                engine=_provider(container, AsyncEngine, name),
+                migrator=_provider(container, Migrator, name),
+                database=_provider(container, DatabaseManager, name),
+                session=_unit_session(name),
+                close=_closer(container, name, routed=replicated),
+                in_use=partial(contains, in_use.names, name),
+            )
+        return registry
+
+    return connection_registry
 
 
 def _unit_session(name: str) -> Callable[[], Awaitable[AsyncSession]]:
