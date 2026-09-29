@@ -1,0 +1,210 @@
+[project]
+name = "xtr-orm"
+version = "1.4.0"
+description = "Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Xterr", email = "me@xterr.dev" }
+]
+keywords = ["orm", "database", "migrations", "sqlalchemy", "alembic", "asyncio"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+dependencies = [
+    "advanced-alchemy>=1.11",
+    "alembic>=1.20",
+    "sqlalchemy[asyncio]>=2.0.41",
+    "typing-extensions>=4.4",
+    "xtr-logging-contracts>=1.0,<2",
+]
+
+[project.optional-dependencies]
+postgres = [
+    "asyncpg>=0.29",
+]
+sqlite = [
+    "aiosqlite>=0.20",
+]
+mysql = [
+    "asyncmy>=0.2.9",
+]
+di = [
+    "xtr-dependency-injection>=1.0,<2",
+    "xtr-service-contracts>=1.0,<2",
+]
+console = [
+    "xtr-console>=1.0,<2",
+]
+messenger = [
+    "xtr-messenger>=1.0,<2",
+]
+
+# Advertises the bundle so debug:bundles can name it when installed but not listed.
+# Advertising activates nothing: an application lists the bundles it wants.
+[project.entry-points."xtr_dependency_injection.bundles"]
+orm = "xtr_orm.bundle:OrmBundle"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.21",
+    "ruff>=0.8",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "anyio>=4.0",
+    "ty>=0.0.83",
+    # Every test runs on SQLite files under the test's own directory: no server.
+    "aiosqlite>=0.20",
+    "xtr-console>=1.0,<2",
+    "xtr-dependency-injection>=1.0,<2",
+    "xtr-logging>=1.0,<2",
+    "xtr-messenger>=1.0,<2",
+    "xtr-service-contracts>=1.0,<2",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+# ─────────────────────────────────────────────────────────────────
+# basedpyright — typeCheckingMode = "all" sets every report flag to error
+# ─────────────────────────────────────────────────────────────────
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.11"
+pythonPlatform = "All"
+include = ["src", "tests"]
+exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist", ".tmp"]
+
+reportUnusedCallResult = "warning"
+reportUnnecessaryTypeIgnoreComment = "error"
+reportUnusedVariable = "error"
+reportMissingParameterType = "error"
+reportPrivateUsage = "error"
+
+# An error message long enough to be useful has to wrap, and a 100-column
+# limit puts the break inside the string.
+reportImplicitStringConcatenation = "none"
+
+# Tests check what a migrator keeps to itself, for the same reason ruff's
+# SLF001 is off for tests.
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportPrivateUsage = "none"
+
+# ─────────────────────────────────────────────────────────────────
+# ruff — select = ["ALL"], minimal justified ignores
+# ─────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+# The revision template is rendered into application code, not run here.
+extend-exclude = ["src/xtr_orm/migrations/template"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Formatter conflicts (ruff documents these)
+    "COM812",
+    "ISC001",
+    # Mutually-exclusive docstring conventions; keep the modern one
+    "D203",
+    "D213",
+    # Project-specific noise
+    "CPY001",
+    "FBT001",
+    "FBT002",
+    "TD002",
+    "TD003",
+    "FIX002",
+    # Exceptions compose their own messages from typed fields; the string at a
+    # raise site is a `reason` data field. See xtr_orm/exception/.
+    "TRY003",
+    "EM101",
+    "EM102",
+    # A context mapping after the message is the logger interface's signature, not a
+    # stray %-format argument: these rules assume every `logger.info` is stdlib's.
+    "PLE1205",
+    "PLE1206",
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# xtr-console reads a command's annotations at runtime — the constructor's for
+# a container, __call__'s for the command line — so none can be deferred.
+# A command's command line is its signature, so options add parameters.
+"src/xtr_orm/command/*.py" = ["TC001", "TC002", "TC003", "PLR0913"]
+# A container builds the middleware from its constructor's annotations, read at runtime.
+"src/xtr_orm/messenger/*.py" = ["TC001", "TC002", "TC003"]
+# The bundle registers factory functions whose signatures the engine reads at
+# runtime, and the container resolves its config's fields; deferring these
+# would register the factories under nothing.
+"src/xtr_orm/bundle/*.py" = ["TC001", "TC002", "TC003"]
+"tests/**/*.py" = [
+    "S101",    # assert is the point of pytest
+    "ARG",     # fixtures look unused
+    "PLR2004", # magic numbers in test data
+    "SLF001",  # tests reach into privates
+    "D",       # test names are the docs
+    "S608",    # SQL written by the test itself, against its own SQLite file
+    "ASYNC240", # a test inspects the files it wrote under its own tmp_path, in place
+    "PLR0913", # fixtures and parameters arrive as arguments
+    "PLR0917",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+# ─────────────────────────────────────────────────────────────────
+# ty — a second opinion on the source
+# ─────────────────────────────────────────────────────────────────
+[tool.ty.src]
+include = ["src", "tests"]
+
+# ─────────────────────────────────────────────────────────────────
+# pytest
+# ─────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+filterwarnings = [
+    "error",
+    # The database layer still decorates its mixins with a marker SQLAlchemy 2.1
+    # deprecated; it warns once, on import, and changes nothing.
+    "ignore:The declarative_mixin decorator:sqlalchemy.exc.SADeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+# CI runs the tests with --cov; a change taking coverage below this fails there.
+fail_under = 95
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    # A Protocol body states a contract; there is nothing there to run.
+    "^\\s*\\.\\.\\.$",
+]
