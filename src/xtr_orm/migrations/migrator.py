@@ -271,15 +271,21 @@ class Migrator(LoggerAware):
                 f'The "{self._name}" connection has no table definitions to compare with.',
             )
         tables = tables_of(self._metadata) if from_empty_schema else None
+        hook = self._config.process_revision_directives
 
         def adjust(
             context: MigrationContext, revision: object, directives: list[MigrationScript]
         ) -> None:
-            del context, revision
-            script = directives[0]
             if tables is not None:
-                script.upgrade_ops, script.downgrade_ops = creating(tables)
-            if not allow_empty and script.upgrade_ops is not None and script.upgrade_ops.is_empty():
+                directives[0].upgrade_ops, directives[0].downgrade_ops = creating(tables)
+            if hook is not None:
+                hook(context, revision, directives)
+            if (
+                not allow_empty
+                and directives
+                and directives[0].upgrade_ops is not None
+                and directives[0].upgrade_ops.is_empty()
+            ):
                 directives.clear()
 
         def work(connection: Connection) -> AvailableMigration | None:
@@ -341,11 +347,14 @@ class Migrator(LoggerAware):
             if not tables:
                 raise MigrationError("The database schema does not contain any tables.")
 
+            hook = self._config.process_revision_directives
+
             def replace(
                 context: MigrationContext, revision: object, directives: list[MigrationScript]
             ) -> None:
-                del context, revision
                 directives[0].upgrade_ops, directives[0].downgrade_ops = creating(tables)
+                if hook is not None:
+                    hook(context, revision, directives)
 
             context = RevisionContext(
                 Config(),
@@ -603,7 +612,11 @@ class Migrator(LoggerAware):
             else:
                 if revision not in done:
                     raise MigrationError(f'The version "{revision}" is not applied.')
-                followers = sorted(child for child in script.nextrev if child in done)
+                followers = sorted(
+                    each
+                    for each in done
+                    if revision in parents(directory, resolve(directory, each))
+                )
                 if followers:
                     raise MigrationError(
                         f'The version "{revision}" is followed by "{followers[0]}", '

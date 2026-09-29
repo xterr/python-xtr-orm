@@ -131,7 +131,8 @@ class Environment:
                 "include_name": _include_name(config.include_name, config.history_table),
                 "include_object": config.include_object,
                 "render_item": _render_item(config.render_item, config.user_module_prefix),
-                "process_revision_directives": config.process_revision_directives,
+                # Not "process_revision_directives": the migrator runs it inside its own,
+                # which the runner would call first, before the revision is complete.
                 "user_module_prefix": config.user_module_prefix,
                 "literal_binds": as_sql,
                 "output_buffer": output,

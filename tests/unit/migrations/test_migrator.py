@@ -15,6 +15,7 @@ from xtr_orm.exception import MigrationError
 from xtr_orm.migrations import Direction, MigrationPlan, MigrationsConfig, Migrator
 
 if TYPE_CHECKING:
+    from alembic.operations.ops import MigrationScript
     from sqlalchemy.ext.asyncio import AsyncEngine
 
 pytestmark = pytest.mark.anyio
@@ -569,6 +570,21 @@ async def test_a_revision_depending_on_another_waits_for_it(
         _ = await migrator.execute(["b2"])
 
 
+async def test_a_revision_another_applied_one_depends_on_is_not_reverted_alone(
+    migrator: Migrator, engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    _ = write_revision(migrations_directory, "a1", table="t_a1")
+    _ = write_revision(migrations_directory, "b2", depends_on="a1", table="t_b2")
+    _ = await migrator.migrate()
+    before = await _versions(engine)
+
+    with pytest.raises(MigrationError) as raised:
+        _ = await migrator.execute(["a1"], Direction.DOWN)
+
+    assert raised.value.reason == 'The version "a1" is followed by "b2", which is applied.'
+    assert await _versions(engine) == before
+
+
 async def test_the_history_table_goes_where_it_is_told(
     engine: AsyncEngine, migrations_directory: Path
 ) -> None:
@@ -644,6 +660,39 @@ async def test_the_migrator_names_its_engine_config_and_connection(
     assert migrator.engine is engine
     assert migrator.name == "default"
     assert migrator.config.version_table == "alembic_version"
+
+
+def _hooked(engine: AsyncEngine, directory: Path, seen: list[int]) -> Migrator:
+    """A migrator whose revision hook names every revision "fixed", as an alembic hook would."""
+
+    def name_it(context: object, revision: object, directives: list[MigrationScript]) -> None:
+        del context, revision
+        seen.append(len(directives))
+        directives[0].rev_id = "fixed"
+
+    config = MigrationsConfig(directory=str(directory), process_revision_directives=name_it)
+    return Migrator(engine, config, METADATA)
+
+
+async def test_the_revision_hook_adjusts_what_a_diff_writes(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    written = await _hooked(engine, migrations_directory, []).diff("create the catalogue")
+
+    assert written is not None
+    assert written.version == "fixed"
+
+
+async def test_the_revision_hook_sees_a_diff_that_found_nothing_before_it_is_dropped(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    await _create_catalogue(engine)
+    seen: list[int] = []
+
+    written = await _hooked(engine, migrations_directory, seen).diff("nothing")
+
+    assert written is None
+    assert seen == [1]
 
 
 async def test_a_migrator_built_without_config_reads_the_defaults(engine: AsyncEngine) -> None:
