@@ -55,6 +55,10 @@ messenger = [
 [project.entry-points."xtr_dependency_injection.bundles"]
 orm = "xtr_orm.bundle:OrmBundle"
 
+# Advertises the recipe — what *Use in an application* takes — for recipes:sync.
+[project.entry-points."xtr_recipes"]
+orm = "xtr_orm.recipe"
+
 [dependency-groups]
 dev = [
     "basedpyright>=1.21",

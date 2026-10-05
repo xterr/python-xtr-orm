@@ -163,15 +163,19 @@ removing it undoes.
 - **Install** — `uv add "xtr-orm[di,console,postgres]"`; `mysql` or `sqlite` instead of
   `postgres` for those databases; drop `console` to go without the commands; add `messenger`
   for the [message bus middleware](#message-bus-middleware).
+- **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure* and
+  *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/orm.py` with the
+  `default` connection, and `DATABASE_URL` in `.env`. It prints the middleware step, which a recipe
+  cannot make for you.
 - **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`, imported from
   `xtr_orm.bundle`.
 - **Brings along** — the logging and console bundles, when those packages are installed.
   With the messenger bundle active too, the [middleware](#message-bus-middleware) are
   registered for a bus to list.
-- **Configure** — optional: with no configuration there is one connection, `default`, reading
-  `DATABASE_URL`, with its revisions in `migrations` in the project directory and diffs
-  against the models advanced-alchemy registers. Connections, replicas and table definitions go
-  in `<app>/config/orm.py`, a `@configure` function returning `OrmConfig` — see
+- **Configure** — the recipe writes a starting `<app>/config/orm.py` with the `default`
+  connection reading `DATABASE_URL`, its revisions in `migrations` in the project directory and
+  diffs against the models advanced-alchemy registers. Add connections, replicas and table
+  definitions to that `@configure` function returning `OrmConfig` — see
   [Kernel / bundle](#kernel--bundle).
 - **Environment** — `DATABASE_URL`, read when a connection is first used — engine, session,
   migrator or command — not when the application boots. Its query may carry options; see

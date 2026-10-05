@@ -1,0 +1,32 @@
+# The recipe for xtr-orm: what *Use in an application* in the README takes, as
+# data. Keep the two in step — the README is the source.
+
+[bundles]
+# "<module>:<class>" = the environments it is listed with, exactly as in BUNDLES.
+"xtr_orm.bundle:OrmBundle" = { all = true }
+
+[files]
+# Destination under the application package = template under this recipe.
+# The default connection on DATABASE_URL, written out so the application has
+# one place to add replicas, connections and its models' metadata.
+"config/orm.py" = "files/config/orm.py.tmpl"
+
+[env]
+# Read when a connection is first used — engine, session, migrator or command —
+# not when the application boots. A local PostgreSQL to start from, for the
+# postgres extra the README installs; change it, or put the real one in
+# .env.local.
+DATABASE_URL = "postgresql+asyncpg://app:change-me@127.0.0.1:5432/app"
+
+[gitignore]
+# Nothing: migrations/ is committed.
+lines = []
+
+[notes]
+steps = [
+  "With the messenger bundle active, list the orm_* middleware in every bus's middleware: every message is then a unit of work.",
+]
+check = [
+  "<script> debug:bundles — orm is listed and active",
+  "<script> orm:migrations:status — it reaches the database",
+]

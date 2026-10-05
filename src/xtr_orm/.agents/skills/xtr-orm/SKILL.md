@@ -146,6 +146,10 @@ use_connections(registry)
 
 ## Use in an application
 
+`uv run xtr-recipes recipes:sync` applies the recipe shipped with this package: it lists `OrmBundle`,
+writes a starting `config/orm.py` with the `default` connection, and `DATABASE_URL` in `.env`. That
+is the steps below a recipe can do; the middleware it prints for you to add.
+
 1. **Install** — `uv add "xtr-orm[di,console,postgres]"`; `mysql` or `sqlite` instead of
    `postgres`; drop `console` to go without the commands; add `messenger` for the bus middleware.
 2. **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`

@@ -1,0 +1,24 @@
+"""The database: one connection, its URL read from ``DATABASE_URL``.
+
+The URL is read when a connection is first used — an engine, a session, a migrator or a
+command — not when the application boots, and its query may carry engine and session
+options. Revisions live in ``migrations/`` in the project directory. Add replicas, more
+connections or the metadata of your own models here.
+"""
+
+from __future__ import annotations
+
+from xtr_dependency_injection import configure, env
+from xtr_orm.bundle import ConnectionConfig, OrmConfig
+
+__all__ = ["orm"]
+
+
+@configure
+def orm() -> OrmConfig:
+    """The ``default`` connection, on ``DATABASE_URL``."""
+    return OrmConfig(
+        connections={
+            "default": ConnectionConfig(url=env("DATABASE_URL")),
+        },
+    )
