@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from xtr_dependency_injection import configure, env
 from xtr_logging.bundle import LoggingConfig
-from xtr_logging.config import ServiceHandlerSpec
+from xtr_logging.config import ServiceHandlerConfig
 from xtr_messenger import MessageBusConfig, TransportConfig
 
 from tests.support.schema import METADATA
@@ -42,4 +42,4 @@ def messenger() -> MessageBusConfig:
 
 @configure
 def logging() -> LoggingConfig:
-    return LoggingConfig(handlers={"main": ServiceHandlerSpec(id="main")})
+    return LoggingConfig(handlers={"main": ServiceHandlerConfig(id="main")})

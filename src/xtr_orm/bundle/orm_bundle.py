@@ -105,25 +105,30 @@ class OrmBundle(Bundle[OrmConfig]):
         builder: ContainerBuilder,
     ) -> None:
         """Register every connection's services under its name, the registry, the commands."""
-        for name, spec in config.connections.items():
+        for name, connection in config.connections.items():
             maker_type: type = (
-                RoutingAsyncSessionMaker if spec.replicas else async_sessionmaker[AsyncSession]
+                RoutingAsyncSessionMaker
+                if connection.replicas
+                else async_sessionmaker[AsyncSession]
             )
             factories = (
-                (_alchemy_factory(name, spec), "alchemy"),
+                (_alchemy_factory(name, connection), "alchemy"),
                 (_engine_factory(name), "engine"),
                 (
-                    _routing_maker_factory(name) if spec.replicas else _session_maker_factory(name),
+                    _routing_maker_factory(name)
+                    if connection.replicas
+                    else _session_maker_factory(name),
                     "session_maker",
                 ),
-                (_migrator_factory(name, spec), "migrator"),
-                (_database_factory(spec), "database"),
+                (_migrator_factory(name, connection), "migrator"),
+                (_database_factory(connection), "database"),
             )
             for factory, kind in factories:
                 _ = services.set(named_factory(factory, f"orm_{kind}_{name}"), qualifier=name)
             _ = services.set(
                 named_factory(
-                    _session_factory(name, routed=bool(spec.replicas)), f"orm_session_{name}"
+                    _session_factory(name, routed=bool(connection.replicas)),
+                    f"orm_session_{name}",
                 ),
                 qualifier=name,
                 lifetime="scoped",
@@ -133,7 +138,9 @@ class OrmBundle(Bundle[OrmConfig]):
                     services.alias(service, service, target_qualifier=name)
 
         _ = services.set(_ConnectionsInUse)
-        routed = {name: bool(spec.replicas) for name, spec in config.connections.items()}
+        routed = {
+            name: bool(connection.replicas) for name, connection in config.connections.items()
+        }
         _ = services.set(_connection_registry_factory(config.default_connection, routed))
 
         if bundle_active(builder, "console"):
@@ -165,24 +172,24 @@ def _alchemy_factory(
     """
 
     async def alchemy(in_use: _ConnectionsInUse) -> AsyncIterator[SQLAlchemyAsyncConfig]:
-        spec = connection.with_url_options()
+        resolved = connection.with_url_options()
         # The options are forwarded by name, each checked against the target's
         # fields by ConnectionConfig; their values are the application's.
-        engine = cast("Callable[..., EngineConfig]", EngineConfig)(**spec.engine_options)
+        engine = cast("Callable[..., EngineConfig]", EngineConfig)(**resolved.engine_options)
         session = cast("Callable[..., AsyncSessionConfig]", AsyncSessionConfig)(
-            **spec.session_options
+            **resolved.session_options
         )
         built = cast("Callable[..., SQLAlchemyAsyncConfig]", SQLAlchemyAsyncConfig)(
             # With replicas, the primary is given through the routing instead.
-            connection_string=None if spec.replicas else spec.url,
-            routing_config=_routing(spec) if spec.replicas else None,
+            connection_string=None if resolved.replicas else resolved.url,
+            routing_config=_routing(resolved) if resolved.replicas else None,
             engine_config=engine,
             session_config=session,
-            bind_key=spec.bind_key,
-            **spec.alchemy_options,
+            bind_key=resolved.bind_key,
+            **resolved.alchemy_options,
         )
         routing_maker: RoutingAsyncSessionMaker | None = None
-        if spec.replicas:
+        if resolved.replicas:
             routing_maker = cast("RoutingAsyncSessionMaker", built.create_session_maker())
             # One pool on the primary: the routing's, which migrations use too.
             built.engine_instance = routing_maker.primary_engine
@@ -198,7 +205,7 @@ def _alchemy_factory(
     return alchemy
 
 
-def _routing(spec: ConnectionConfig) -> RoutingConfig:
+def _routing(connection: ConnectionConfig) -> RoutingConfig:
     """Map the connection's replicas onto the database layer's read/write routing.
 
     Reads go to a replica picked at random; a write, a transaction and every
@@ -207,14 +214,14 @@ def _routing(spec: ConnectionConfig) -> RoutingConfig:
     built.
     """
     return RoutingConfig(
-        primary_connection_string=spec.url,
+        primary_connection_string=connection.url,
         read_replicas=[
             ReplicaEngine(connection_string=url, name=replica)
-            for replica, url in spec.replicas.items()
+            for replica, url in connection.replicas.items()
         ],
         routing_strategy=RoutingStrategy.RANDOM,
         sticky_after_write=True,
-        reset_stickiness_on_commit=spec.keep_replica,
+        reset_stickiness_on_commit=connection.keep_replica,
     )
 
 
@@ -281,13 +288,15 @@ def _migrator_factory(
     """Build the factory of the connection ``name``'s migrator, logging to ``orm`` when it can."""
 
     async def migrator(container: ContainerInterface) -> Migrator:
-        spec = connection.with_url_options()
+        resolved = connection.with_url_options()
         metadata = (
-            spec.metadata if spec.metadata is not None else metadata_registry.get(spec.bind_key)
+            resolved.metadata
+            if resolved.metadata is not None
+            else metadata_registry.get(resolved.bind_key)
         )
         built = Migrator(
             await container.get(AsyncEngine, name),
-            spec.migrations or MigrationsConfig(),
+            resolved.migrations or MigrationsConfig(),
             metadata,
             name=name,
         )
@@ -303,10 +312,10 @@ def _database_factory(connection: ConnectionConfig) -> Callable[[], DatabaseMana
     """Build the factory of ``connection``'s database manager."""
 
     def database() -> DatabaseManager:
-        spec = connection.with_url_options()
-        connect_args = spec.engine_options.get("connect_args")
+        resolved = connection.with_url_options()
+        connect_args = resolved.engine_options.get("connect_args")
         return DatabaseManager(
-            spec.url,
+            resolved.url,
             connect_args=connect_args if isinstance(connect_args, dict) else None,  # pyright: ignore[reportUnknownArgumentType] -- an option mapping, read as given
         )
 
