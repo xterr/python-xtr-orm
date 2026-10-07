@@ -8,7 +8,8 @@ from xtr_console import ConsoleStyle, ExitCode, as_command, escape
 
 from xtr_orm.exception import MigrationError
 
-from .connection_command import ConnectionCommand, format_version
+from ._reporting import format_version
+from .connection_command import ConnectionCommand
 
 __all__ = ["MigrationsCurrentCommand"]
 

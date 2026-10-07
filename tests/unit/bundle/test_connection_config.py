@@ -126,3 +126,36 @@ def test_a_url_option_that_cannot_be_read_is_refused(query: str, reason: str) ->
         _ = config.with_url_options()
 
     assert raised.value.reason.startswith(reason)
+
+
+def test_no_password_reaches_the_repr_of_a_connection() -> None:
+    config = ConnectionConfig(
+        url="postgresql+asyncpg://app:s3cret@db/shop",
+        replicas={"replica1": "postgresql+asyncpg://app:r3plica@db2/shop"},
+    )
+
+    shown = repr(config)
+
+    assert "s3cret" not in shown
+    assert "r3plica" not in shown
+    assert "postgresql+asyncpg://app:***@db/shop" in shown
+    assert "postgresql+asyncpg://app:***@db2/shop" in shown
+
+
+def test_a_url_still_waiting_on_its_variable_reprs_as_it_was_written() -> None:
+    assert "%env(DATABASE_URL)%" in repr(ConnectionConfig())
+
+
+def test_a_url_waiting_on_a_placeholder_reprs_as_the_placeholder() -> None:
+    config = ConnectionConfig(url=env("SOME_DATABASE_URL"))
+
+    assert "env(SOME_DATABASE_URL)" in repr(config)
+
+
+def test_the_repr_keeps_every_other_field() -> None:
+    config = ConnectionConfig(engine_options={"pool_size": 5}, bind_key="reports")
+
+    shown = repr(config)
+
+    assert "engine_options={'pool_size': 5}" in shown
+    assert "bind_key='reports'" in shown

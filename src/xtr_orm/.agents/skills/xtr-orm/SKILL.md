@@ -133,15 +133,18 @@ Nine more, and every flag: [references/commands.md](references/commands.md).
 Deploy order: `orm:migrations:migrate` from **one** place, before the application starts —
 migrations take no lock.
 
-Without a container, hand the commands their connections once:
+Every command takes the `ConnectionRegistry` it acts on as its one constructor argument. Nothing
+stands in for it: a console with no container to supply it raises `MissingContainerError` naming
+`connections`.
 
 ```python
 from xtr_orm import ConnectionRegistry, DatabaseManager
-from xtr_orm.command import use_connections
+from xtr_orm.command import MigrationsMigrateCommand
 
 registry = ConnectionRegistry()
 registry.register("default", engine=engine, migrator=migrator, database=DatabaseManager(url))
-use_connections(registry)
+
+migrate = MigrationsMigrateCommand(registry)
 ```
 
 ## Use in an application
@@ -251,7 +254,64 @@ database.backend, database.database, database.safe_url  # properties
 
 The server is reached through its maintenance database — `postgres`, `master`, none on MySQL and
 MariaDB — carrying every connection parameter of the URL but the database name. A SQLite database
-is its file. Any other server raises `UnsupportedDatabaseError`.
+is its file. Without `if_exists`, dropping a SQLite file that is not there raises
+`MissingDatabaseError`. Any other server raises `UnsupportedDatabaseError`.
+
+## Testing
+
+Test against a SQLite file in the test's own directory: it is a real database, needs no server,
+and goes away with `tmp_path`. Give a `Migrator` the engine, a `MigrationsConfig` pointing at a
+directory of its own, and your table definitions.
+
+```python
+# tests/test_invoices.py
+from pathlib import Path
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from xtr_orm import DatabaseManager, MigrationsConfig, Migrator
+
+from app.models import Base
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_the_schema_the_models_describe_is_migrated(tmp_path: Path) -> None:
+    url = f"sqlite+aiosqlite:///{tmp_path / 'app.sqlite'}"
+    assert await DatabaseManager(url).create()
+    engine = create_async_engine(url)
+    migrator = Migrator(
+        engine,
+        # render_as_batch: SQLite cannot alter a table any other way.
+        MigrationsConfig(directory=str(tmp_path / "migrations"), render_as_batch=True),
+        Base.metadata,
+    )
+    try:
+        assert await migrator.diff("the catalogue") is not None
+        _ = await migrator.migrate()
+
+        assert (await migrator.status()).is_up_to_date
+        async with engine.connect() as connection:
+            _ = await connection.execute(text("select count(*) from invoice"))
+    finally:
+        await engine.dispose()
+```
+
+- **A command** takes a `ConnectionRegistry`, so build one for the test and hand it over:
+  `MigrationsStatusCommand(registry)`. Register the connection with the engine, migrator and
+  `DatabaseManager` the test made.
+- **A unit of work** — the scope an `AsyncSession` lives in — is opened by
+  `bind_callable(container, work, per_call_scope=True)` under a kernel; outside one, ask the
+  registry for a session only where you registered one, or `SessionUnavailableError` says so.
+- **Two kernels in one process** share advanced-alchemy's model registry, so give each
+  connection its `metadata` rather than let a diff pick up another test's tables.
+- **Dispose every engine you build**, in a fixture's teardown: an engine left open holds the
+  SQLite file and warns when the loop closes.
 
 ## Errors
 
@@ -261,6 +321,7 @@ Every error derives from `OrmError`.
 |---|---|
 | `InvalidArgumentError` | A configuration cannot be used: an empty name, an unknown engine/session option, a URL option that does not read. Also a `ValueError` |
 | `MigrationError` | A migration is refused or revisions cannot be read: an unknown or ambiguous version, a revision out of order, a diff of a database behind its revisions |
+| `MissingDatabaseError` | A database dropped without `if_exists` is not there — a SQLite file that does not exist. Also a `FileNotFoundError` |
 | `UnknownConnectionError` | A connection asked for by a name nothing registered. Also a `LookupError` |
 | `UnsupportedDatabaseError` | A database created or dropped on a server whose statements are not known |
 | `SessionUnavailableError` | A session asked for outside a unit of work, or of a connection registered without one |

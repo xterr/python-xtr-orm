@@ -98,7 +98,8 @@ class ConnectionRegistry:
             close: What closes the connection; its engine is disposed when
                 left out.
             in_use: Whether the connection is in use — its engine built;
-                without it, the connection always is. See :meth:`in_use`.
+                without it, the connection always is. See :meth:`in_use`
+                and :meth:`close`.
 
         Raises:
             InvalidArgumentError: When ``name`` is empty.
@@ -178,10 +179,16 @@ class ConnectionRegistry:
 
         The engine stays usable; its next use connects again.
 
+        A connection nothing has used — one whose ``in_use`` says so — is left
+        alone: it holds nothing to release, and building its engine to dispose
+        it would read its configuration and connect.
+
         Raises:
             UnknownConnectionError: When no connection has that name.
         """
         connection = self._get(name)
+        if connection.in_use is not None and not connection.in_use():
+            return
         if connection.close is not None:
             await connection.close()
             return

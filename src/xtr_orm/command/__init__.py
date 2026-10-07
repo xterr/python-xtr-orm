@@ -2,16 +2,19 @@
 
 Importing this module declares them. With a container, the orm bundle loads
 it when the console bundle is active, and every command acts on the
-connections the bundle registered. Without one, give them connections with
-:func:`use_connections`:
+connections the bundle registered.
+
+Every command takes that :class:`~xtr_orm.ConnectionRegistry` as its one
+constructor argument, so a console application registering them itself builds
+each with a registry of its own:
 
 ```python
 from xtr_orm import ConnectionRegistry
-from xtr_orm.command import use_connections
+from xtr_orm.command import MigrationsMigrateCommand
 
 registry = ConnectionRegistry()
 registry.register("default", engine=engine, migrator=migrator, database=database)
-use_connections(registry)
+command = MigrationsMigrateCommand(registry)
 ```
 
 Needs the ``console`` extra: ``xtr-orm[console]``.
@@ -19,7 +22,6 @@ Needs the ``console`` extra: ``xtr-orm[console]``.
 
 from __future__ import annotations
 
-from .connections import use_connections
 from .database_create_command import DatabaseCreateCommand
 from .database_drop_command import DatabaseDropCommand
 from .migrations_current_command import MigrationsCurrentCommand
@@ -52,5 +54,4 @@ __all__ = [
     "MigrationsUpToDateCommand",
     "MigrationsVersionCommand",
     "RunSqlCommand",
-    "use_connections",
 ]

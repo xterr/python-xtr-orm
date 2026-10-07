@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 import pytest
 from advanced_alchemy.config import SQLAlchemyAsyncConfig
 from advanced_alchemy.routing import RoutingAsyncSessionMaker
+from advanced_alchemy.routing.session import RoutingAsyncSession
 from sqlalchemy import Column, MetaData, String, Table, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -248,6 +249,26 @@ async def test_a_connection_with_replicas_routes_through_a_routing_session_maker
         assert [str(each.url) for each in maker.replica_engines] == [
             f"sqlite+aiosqlite:///{tmp_path / 'replica.sqlite'}"
         ]
+
+
+async def test_a_unit_s_session_uses_the_engines_the_container_disposes(tmp_path: Path) -> None:
+    async def unit(session: Injected[AsyncSession]) -> AsyncEngine:
+        assert isinstance(session, RoutingAsyncSession)
+        return session.primary_engine
+
+    async with await _replicated(tmp_path).boot() as booted:
+        maker = await booted.container.get(RoutingAsyncSessionMaker)
+        config = await booted.container.get(SQLAlchemyAsyncConfig)
+        # A session comes from the maker registered for the connection. Asking
+        # the layer's configuration for one instead happens to answer the same
+        # while it remembers the one it made, so the memory is dropped here: a
+        # maker made on the spot opens engines of its own, which nothing
+        # disposes and no migration or command shares.
+        config.session_maker = None
+
+        opened = await bind_callable(booted.container, unit, per_call_scope=True)()
+
+        assert opened is maker.primary_engine
 
 
 async def test_reads_go_to_a_replica_until_the_unit_writes(tmp_path: Path) -> None:

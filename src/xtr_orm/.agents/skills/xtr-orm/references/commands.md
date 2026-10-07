@@ -53,15 +53,20 @@ its schema with your models.
 
 ## Without a container
 
+Every command takes the `ConnectionRegistry` it acts on as its one constructor argument; nothing
+stands in for it, so a console with no container to supply it raises `MissingContainerError`
+naming `connections`.
+
 ```python
 from xtr_orm import ConnectionRegistry, DatabaseManager
-from xtr_orm.command import use_connections
+from xtr_orm.command import MigrationsMigrateCommand
 
 registry = ConnectionRegistry()
 registry.register("default", engine=engine, migrator=migrator, database=DatabaseManager(url))
-use_connections(registry)
+
+migrate = MigrationsMigrateCommand(registry)
 ```
 
 The command classes are exported from `xtr_orm.command` — `MigrationsMigrateCommand`,
 `MigrationsDiffCommand`, `DatabaseCreateCommand` and the rest — for a console application to
-register itself.
+register itself, each built with the registry it should act on.

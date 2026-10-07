@@ -9,14 +9,8 @@ from xtr_console import ConsoleStyle, ExitCode, as_command, escape
 from xtr_orm.exception import MigrationError
 from xtr_orm.migrations import Direction
 
-from .connection_command import (
-    ConnectionCommand,
-    confirm_changes,
-    report_count,
-    report_plan,
-    report_results,
-    save_sql,
-)
+from ._reporting import confirm_changes, report_count, report_plan, report_results, save_sql
+from .connection_command import ConnectionCommand
 
 __all__ = ["MigrationsExecuteCommand"]
 

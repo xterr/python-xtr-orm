@@ -71,3 +71,20 @@ def test_two_connections_sharing_a_migrations_directory_are_refused() -> None:
                 "reports": ConnectionConfig(migrations=shared),
             },
         )
+
+
+def test_no_connection_s_password_reaches_the_repr() -> None:
+    config = OrmConfig(
+        connections={
+            "default": ConnectionConfig(
+                url="postgresql+asyncpg://app:s3cret@db/shop",
+                replicas={"replica1": "postgresql+asyncpg://app:r3plica@db2/shop"},
+            ),
+        },
+    )
+
+    shown = repr(config)
+
+    assert "s3cret" not in shown
+    assert "r3plica" not in shown
+    assert "postgresql+asyncpg://app:***@db/shop" in shown

@@ -8,8 +8,7 @@ from xtr_console import ConsoleStyle, ExitCode, as_command, escape
 
 from xtr_orm.exception import MigrationError
 
-from .connection_command import (
-    ConnectionCommand,
+from ._reporting import (
     confirm_changes,
     report_count,
     report_plan,
@@ -17,6 +16,7 @@ from .connection_command import (
     save_sql,
     without_a_file,
 )
+from .connection_command import ConnectionCommand
 
 __all__ = ["MigrationsMigrateCommand"]
 

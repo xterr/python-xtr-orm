@@ -65,6 +65,9 @@ __all__ = ["ORM_CHANNEL", "OrmBundle"]
 
 _T = TypeVar("_T")
 
+_SessionMaker = type[async_sessionmaker[AsyncSession]] | type[RoutingAsyncSessionMaker]
+"""Which session maker a connection is given, and so which service a session comes from."""
+
 ORM_CHANNEL: Final = "orm"
 """The logging channel migrators write to."""
 
@@ -106,7 +109,7 @@ class OrmBundle(Bundle[OrmConfig]):
     ) -> None:
         """Register every connection's services under its name, the registry, the commands."""
         for name, connection in config.connections.items():
-            maker_type: type = (
+            maker_type: _SessionMaker = (
                 RoutingAsyncSessionMaker
                 if connection.replicas
                 else async_sessionmaker[AsyncSession]
@@ -127,7 +130,7 @@ class OrmBundle(Bundle[OrmConfig]):
                 _ = services.set(named_factory(factory, f"orm_{kind}_{name}"), qualifier=name)
             _ = services.set(
                 named_factory(
-                    _session_factory(name, routed=bool(connection.replicas)),
+                    _session_factory(name, maker_type),
                     f"orm_session_{name}",
                 ),
                 qualifier=name,
@@ -259,19 +262,24 @@ def _routing_maker_factory(
 
 
 def _session_factory(
-    name: str, *, routed: bool
+    name: str, maker_type: _SessionMaker
 ) -> Callable[[ContainerInterface], AsyncIterator[AsyncSession]]:
     """Build the factory of the connection ``name``'s session, closed when its unit ends.
 
+    The session comes from ``maker_type``, the maker service registered for the
+    connection, so every unit of work shares the pools the container owns and
+    disposes — and an application that replaces that service is obeyed.
+
     Closing rolls back what was not committed: committing is the unit's job.
-    With replicas — ``routed`` — a unit starts reading from them whatever the
-    unit before it wrote: sticking to the primary after a write is one unit's
-    state, forgotten when the unit ends — not when another of its sessions
-    opens, which would send the reads after a write to a replica.
+    With replicas, a unit starts reading from them whatever the unit before it
+    wrote: sticking to the primary after a write is one unit's state, forgotten
+    when the unit ends — not when another of its sessions opens, which would
+    send the reads after a write to a replica.
     """
+    routed = maker_type is RoutingAsyncSessionMaker
 
     async def session(container: ContainerInterface) -> AsyncIterator[AsyncSession]:
-        maker = (await container.get(SQLAlchemyAsyncConfig, name)).create_session_maker()
+        maker = await container.get(maker_type, name)
         try:
             async with maker() as opened:
                 yield opened

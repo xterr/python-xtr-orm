@@ -15,7 +15,11 @@ import pytest
 from sqlalchemy.dialects import mssql, mysql, postgresql
 
 from xtr_orm.database import DatabaseManager, database_manager
-from xtr_orm.exception import InvalidArgumentError, UnsupportedDatabaseError
+from xtr_orm.exception import (
+    InvalidArgumentError,
+    MissingDatabaseError,
+    UnsupportedDatabaseError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -110,10 +114,15 @@ async def test_creating_an_existing_sqlite_file_is_refused_unless_asked_to_skip(
 async def test_dropping_a_missing_sqlite_file_is_refused_unless_asked_to_skip(
     tmp_path: Path,
 ) -> None:
-    manager = DatabaseManager(f"sqlite+aiosqlite:///{tmp_path / 'app.sqlite'}")
+    path = tmp_path / "app.sqlite"
+    manager = DatabaseManager(f"sqlite+aiosqlite:///{path}")
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(MissingDatabaseError) as raised:
         _ = await manager.drop()
+
+    assert raised.value.database == str(path)
+    assert raised.value.operation == "drop"
+    assert isinstance(raised.value, FileNotFoundError)
     assert not await manager.drop(if_exists=True)
 
 

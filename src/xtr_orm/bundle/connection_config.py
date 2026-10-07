@@ -5,10 +5,12 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, cast
 
 from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemyAsyncConfig
 from sqlalchemy import MetaData, make_url
+from sqlalchemy.exc import ArgumentError
+from typing_extensions import override
 
 from xtr_orm.exception import InvalidArgumentError
 from xtr_orm.migrations import MigrationsConfig
@@ -108,7 +110,7 @@ def _no_replicas() -> dict[str, str]:
     return {}
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class ConnectionConfig:
     """One database: where it is, its replicas, its engine and sessions, and its migrations.
 
@@ -170,6 +172,21 @@ class ConnectionConfig:
     bind_key: str | None = None
     metadata: MetaData | Sequence[MetaData] | None = None
     migrations: MigrationsConfig | None = None
+
+    @override
+    def __repr__(self) -> str:
+        """Render every field, with the password of :attr:`url` and of each replica hidden.
+
+        A configuration is read back by a diagnostics report, a build error and
+        a debugger, so its URLs are rendered the way a message renders one.
+        """
+        shown: dict[str, object] = {
+            each.name: cast("object", getattr(self, each.name)) for each in dataclasses.fields(self)
+        }
+        shown["url"] = _without_password(self.url)
+        shown["replicas"] = {name: _without_password(url) for name, url in self.replicas.items()}
+        rendered = ", ".join(f"{name}={value!r}" for name, value in shown.items())
+        return f"{type(self).__name__}({rendered})"
 
     def __post_init__(self) -> None:
         """Refuse an empty URL, or an option the engine, a session or the layer does not take.
@@ -234,6 +251,19 @@ def _read(name: str, value: str, reader: Callable[[str], object]) -> object:
         raise InvalidArgumentError(
             f'The URL option "{name}" must be {error}, got "{value}".',
         ) from error
+
+
+def _without_password(url: str) -> object:
+    """Return ``url`` with its password hidden, or ``url`` itself when it is not a URL yet.
+
+    A URL still carrying an environment placeholder cannot be parsed, and holds
+    no credentials to hide: it is returned as it was written so a report names
+    the variable the connection waits on.
+    """
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except ArgumentError:
+        return url
 
 
 def _check_options(

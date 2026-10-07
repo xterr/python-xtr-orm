@@ -324,15 +324,18 @@ commands that change the database ask first; `-n` answers yes.
 
 `--write-sql` writes to the file named, or to a dated file in the directory named.
 
-Without a container, give the commands their connections once:
+Every command takes the `ConnectionRegistry` it acts on as its one constructor argument — the
+bundle's with a container, and your own without one. Nothing stands in for it: a console with no
+container to supply it reports the parameter it cannot fill.
 
 ```python
 from xtr_orm import ConnectionRegistry, DatabaseManager
-from xtr_orm.command import use_connections
+from xtr_orm.command import MigrationsMigrateCommand
 
 registry = ConnectionRegistry()
 registry.register("default", engine=engine, migrator=migrator, database=DatabaseManager(url))
-use_connections(registry)
+
+migrate = MigrationsMigrateCommand(registry)
 ```
 
 ## Message bus middleware
@@ -414,6 +417,11 @@ every statement committed as it runs, and with every connection parameter of the
 database: the credentials, the host and the driver's query options, such as `ssl`. A SQLite
 database is its file. Any other server is refused with `UnsupportedDatabaseError`.
 
+`create` and `drop` let the server refuse a database that is already there or is not, which is
+why both take a flag — `create(if_not_exists=True)`, `drop(if_exists=True)` — to be told so
+instead. On SQLite the file is the database: dropping one that is not there raises
+`MissingDatabaseError`.
+
 ## Errors
 
 Every error derives from `OrmError`.
@@ -422,6 +430,7 @@ Every error derives from `OrmError`.
 |---|---|
 | `InvalidArgumentError` | A configuration cannot be used — an empty name, an unknown option, a URL option that does not read (also a `ValueError`) |
 | `MigrationError` | A migration is refused or its revisions cannot be read — an unknown or ambiguous version, a revision out of order, a diff of a database behind its revisions |
+| `MissingDatabaseError` | A database is dropped that is not there — a SQLite file that does not exist — without `if_exists` (also a `FileNotFoundError`) |
 | `UnknownConnectionError` | A connection is asked for by a name nothing registered (also a `LookupError`) |
 | `UnsupportedDatabaseError` | A database is created or dropped on a server whose statements are not known |
 | `SessionUnavailableError` | A connection's session is asked for outside a unit of work, or of a connection registered without one |

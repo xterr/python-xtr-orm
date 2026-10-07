@@ -11,7 +11,11 @@ from sqlalchemy import URL, make_url, text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from xtr_orm.exception import InvalidArgumentError, UnsupportedDatabaseError
+from xtr_orm.exception import (
+    InvalidArgumentError,
+    MissingDatabaseError,
+    UnsupportedDatabaseError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Mapping
@@ -130,6 +134,8 @@ class DatabaseManager:
                 return ``False``, rather than let the server refuse.
 
         Raises:
+            MissingDatabaseError: When the SQLite file is not there and
+                ``if_exists`` was not asked for.
             UnsupportedDatabaseError: For a server this library cannot ask.
         """
         if if_exists and not await self.exists():
@@ -190,7 +196,16 @@ class DatabaseManager:
             path.touch(exist_ok=False)
 
     def _remove_file(self) -> None:
-        """Remove the SQLite file; nothing for one in memory."""
+        """Remove the SQLite file; nothing for one in memory.
+
+        Raises:
+            MissingDatabaseError: When the file is not there — what a server
+                answers for a database it has not got.
+        """
         path = self._sqlite_path()
-        if path is not None:
+        if path is None:
+            return
+        try:
             path.unlink()
+        except FileNotFoundError as error:
+            raise MissingDatabaseError(self.database, "drop") from error

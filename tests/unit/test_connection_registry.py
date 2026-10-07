@@ -165,3 +165,41 @@ async def test_closing_disposes_the_engine_unless_told_otherwise(
 
     assert engine.pool is not pool
     assert closed == ["custom"]
+
+
+async def test_closing_a_connection_nothing_has_used_opens_nothing(
+    engine: AsyncEngine, migrator: Migrator
+) -> None:
+    built: list[str] = []
+    closed: list[str] = []
+
+    async def build_engine() -> AsyncEngine:
+        built.append("engine")
+        return engine
+
+    async def close() -> None:
+        closed.append("custom")
+
+    registry = ConnectionRegistry()
+    database = DatabaseManager("sqlite+aiosqlite://")
+    registry.register(
+        "idle",
+        engine=build_engine,
+        migrator=migrator,
+        database=database,
+        in_use=lambda: False,
+    )
+    registry.register(
+        "idle_with_closer",
+        engine=build_engine,
+        migrator=migrator,
+        database=database,
+        close=close,
+        in_use=lambda: False,
+    )
+
+    await registry.close("idle")
+    await registry.close("idle_with_closer")
+
+    assert built == []
+    assert closed == []
