@@ -1,6 +1,6 @@
 ---
 name: xtr-orm
-description: How to configure database connections, inject async sessions and run versioned schema migrations with xtr-orm. Use when application code needs an AsyncEngine, an AsyncSession, a session per request or per message, read replicas, a DATABASE_URL, a new migration revision, a schema diff against models, the orm:migrations:* or orm:database:* console commands, one transaction per message on a bus, or when adding OrmBundle to an application on xtr-dependency-injection.
+description: How to configure database connections, inject async sessions and run versioned schema migrations with xtr-orm. Use when application code needs an AsyncEngine, an AsyncSession, a session per request or per message, read replicas, a DATABASE_URL, a new migration revision, a schema diff against models, the orm:migrations:* or orm:database:* console commands, one transaction per message on a bus, when a library bundle must add tables it builds in code to a connection's definitions, or when adding OrmBundle to an application on xtr-dependency-injection.
 ---
 
 # xtr-orm
@@ -20,6 +20,8 @@ connection's name. Everything is async; there is no sync counterpart.
 - Write a revision from your models: `orm:migrations:diff --message "add invoices"`. Apply:
   `orm:migrations:migrate`. Read it: `orm:migrations:status`.
 - Without a container: `Migrator(engine, MigrationsConfig(directory="migrations"), Base.metadata)`.
+- A library bringing its own tables registers an `OrmMappingsPass` from its bundle's `build`; its
+  driver's `load_metadata` must be idempotent.
 - One transaction per message: list `orm_transaction` in the bus's `middleware`; handlers never
   commit.
 - On SQLite, set `MigrationsConfig(render_as_batch=True)` or table alterations cannot be written.
@@ -113,6 +115,75 @@ under a kernel start it with `%kernel.project_dir%`), `render_as_batch` (SQLite)
 `file_template`, `post_write_hooks` (a formatter), `transaction_per_migration`,
 `template_directory`, `user_module_prefix`. See [references/migrations.md](references/migrations.md)
 for every field and for writing your own `script.py.mako`.
+
+## Map tables from a bundle
+
+For a library whose own tables an application configures — their prefix, which of them it keeps,
+which column type an id gets — so they exist only once that configuration is read. Its bundle
+keeps an `OrmMappingsPass`, registers it in `build`, and hands it the driver it builds in
+`load_extension`; the pass loads the tables into the definitions the named connection's
+migrations use, so `orm:migrations:diff` writes them like the application's own models.
+
+```python
+from typing import final
+
+from sqlalchemy import Column, Integer, MetaData, Table
+from typing_extensions import override
+from xtr_dependency_injection import (
+    Bundle,
+    ContainerBuilder,
+    ServiceConfigurator,
+    as_bundle,
+    required_bundle,
+)
+from xtr_orm import MappingDriverInterface
+from xtr_orm.bundle import OrmBundle, OrmMappingsPass
+
+
+@final
+@required_bundle(OrmBundle)
+@as_bundle("invoicing", config=InvoicingConfig)
+class InvoicingBundle(Bundle[InvoicingConfig]):
+    def __init__(self) -> None:
+        self._mappings = OrmMappingsPass("invoicing.connection", "invoicing.persist")
+
+    @override
+    def build(self, builder: ContainerBuilder) -> None:
+        builder.add_compiler_pass(self._mappings)
+
+    @override
+    def load_extension(
+        self, config: InvoicingConfig, services: ServiceConfigurator, builder: ContainerBuilder
+    ) -> None:
+        builder.set_parameter("invoicing.connection", config.connection)
+        builder.set_parameter("invoicing.persist", config.persist)
+        if config.persist:
+            self._mappings.set_driver(InvoicingDriver(config.table_prefix))
+
+
+@final
+class InvoicingDriver(MappingDriverInterface):
+    def __init__(self, prefix: str) -> None:
+        self._prefix = prefix
+
+    def load_metadata(self, metadata: MetaData) -> tuple[str, ...]:
+        name = f"{self._prefix}invoice"
+        if name in metadata.tables:
+            return ()
+        _ = Table(name, metadata, Column("id", Integer, primary_key=True))
+        return (name,)
+```
+
+A driver is anything satisfying `MappingDriverInterface`: `load_metadata(metadata)` adds its
+tables and returns the names it added. Subclassing it has the type checker hold you to that call.
+
+| Rule | What it means |
+|---|---|
+| Idempotent | Skip every name already in `metadata.tables` and leave it out of the return. The registered definitions are process-wide — one `MetaData` per bind key for the whole process — so a second kernel loads the same driver into the same one. It outlives the flag: a kernel built with persistence off maps nothing itself, yet still sees and diffs every table a persisting kernel of the same process put in that bind key, or in a module-level `MetaData` both reach. Give such a kernel a `bind_key`, or a freshly built `MetaData`, no persisting kernel used |
+| Which definitions | The connection's `metadata` when it has one, else advanced-alchemy's for its `bind_key`. A connection keeping several sets is refused, naming it |
+| On or off | The flag parameter is read for truth; unset means off. On with no driver, or a connection name nothing configured, fails the build with `InvalidArgumentError` |
+| Plain values | Both parameters are read while compiling, before `%name%` is resolved and long before `env(...)` is — set them from the bundle's own resolved config. One still holding a `%name%` reference fails the build naming the parameter, as does a connection parameter holding something that is not a name at all: a name is never coerced out of it, a connection being allowed to be called `7` |
+| Required peer | The bundle must declare `@required_bundle(OrmBundle)`; without it the pass cannot read the orm's configuration and the build fails with `UnknownConfigTypeError` |
 
 ## Console commands
 
@@ -310,6 +381,10 @@ async def test_the_schema_the_models_describe_is_migrated(tmp_path: Path) -> Non
   registry for a session only where you registered one, or `SessionUnavailableError` says so.
 - **Two kernels in one process** share advanced-alchemy's model registry, so give each
   connection its `metadata` rather than let a diff pick up another test's tables.
+- **A mapping driver** needs no container: `driver.load_metadata(MetaData())` returns the names
+  it added, and a second call on the same `MetaData` must return `()`. A kernel test asserting
+  a library mapped nothing needs a bind key of its own, or an earlier kernel's tables are still
+  in the one it diffs.
 - **Dispose every engine you build**, in a fixture's teardown: an engine left open holds the
   SQLite file and warns when the loop closes.
 
@@ -340,4 +415,9 @@ Every error derives from `OrmError`.
 - Do not run `orm:migrations:migrate` from several processes at once; it takes no lock.
 - Do not rely on advanced-alchemy's process-wide model registry when two kernels share one
   process: give each connection its `metadata`.
+- Do not write a mapping driver that defines a table unconditionally: a `load_metadata` that
+  does not skip what is already there fails the second kernel of the process.
+- Do not read turning a library's persistence off as a clean slate: that kernel maps nothing of
+  its own, but still sees and diffs the tables a persisting kernel of the same process left in
+  the bind key — give it a `bind_key`, or a freshly built `MetaData`, no persisting kernel used.
 - Do not expect a timezone on `executed_at` outside PostgreSQL; it is naive elsewhere.

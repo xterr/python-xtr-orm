@@ -7,5 +7,13 @@ from xtr_orm.migrations import MigrationsConfig
 from .connection_config import ConnectionConfig
 from .orm_bundle import ORM_CHANNEL, OrmBundle
 from .orm_config import OrmConfig
+from .orm_mappings_pass import OrmMappingsPass
 
-__all__ = ["ORM_CHANNEL", "ConnectionConfig", "MigrationsConfig", "OrmBundle", "OrmConfig"]
+__all__ = [
+    "ORM_CHANNEL",
+    "ConnectionConfig",
+    "MigrationsConfig",
+    "OrmBundle",
+    "OrmConfig",
+    "OrmMappingsPass",
+]

@@ -299,6 +299,82 @@ whatever the one before wrote. Migrations and the database commands always use t
 A block can be sent elsewhere with advanced-alchemy's `primary_context()` and
 `replica_context()`, from `advanced_alchemy.routing`.
 
+## Mapping tables from a bundle
+
+A library can bring its own tables to an application's database — tables whose prefix, names
+or column types the application configures, and which therefore exist only once that
+configuration is read. `OrmMappingsPass` puts them into the table definitions of the
+connection the application picked, while the container is compiled: early enough for
+`orm:migrations:diff` to write them like any of the application's own models.
+
+The library's bundle keeps the pass, registers it in `build`, and hands over the driver it
+builds from its configuration in `load_extension`:
+
+```python
+from xtr_orm.bundle import OrmBundle, OrmMappingsPass
+
+
+@final
+@required_bundle(OrmBundle)
+@as_bundle("invoicing", config=InvoicingConfig)
+class InvoicingBundle(Bundle[InvoicingConfig]):
+    def __init__(self) -> None:
+        self._mappings = OrmMappingsPass("invoicing.connection", "invoicing.persist")
+
+    @override
+    def build(self, builder: ContainerBuilder) -> None:
+        builder.add_compiler_pass(self._mappings)
+
+    @override
+    def load_extension(
+        self, config: InvoicingConfig, services: ServiceConfigurator, builder: ContainerBuilder
+    ) -> None:
+        builder.set_parameter("invoicing.connection", config.connection)
+        builder.set_parameter("invoicing.persist", config.persist)
+        if config.persist:
+            self._mappings.set_driver(InvoicingDriver(config.table_prefix))
+```
+
+A driver is anything satisfying `MappingDriverInterface`: one call, adding its tables and
+naming them. Subclass it to have the type checker hold you to that call.
+
+```python
+from xtr_orm import MappingDriverInterface
+
+
+@final
+class InvoicingDriver(MappingDriverInterface):
+    def __init__(self, prefix: str) -> None:
+        self._prefix = prefix
+
+    def load_metadata(self, metadata: MetaData) -> tuple[str, ...]:
+        name = f"{self._prefix}invoice"
+        if name in metadata.tables:
+            return ()
+        _ = Table(name, metadata, Column("id", Integer, primary_key=True))
+        return (name,)
+```
+
+- **Which definitions** — the ones the connection's migrations compare the database with: its
+  `metadata` when it has one, else the ones advanced-alchemy registers for its `bind_key`. A
+  connection keeping several sets is refused, naming it; give that one a single `MetaData`.
+- **Idempotent, always** — `load_metadata` skips the tables already there and leaves them out
+  of what it returns. The registered definitions are process-wide — advanced-alchemy keeps one
+  `MetaData` per bind key for the whole process — so two kernels in one process load the same
+  driver into the same one. That outlives the flag: a kernel built with the library's
+  persistence off maps nothing itself, yet still *sees* every table a persisting kernel of the
+  same process put in that bind key, or in a module-level `MetaData` both reach, and diffs
+  them as its own. Give such a kernel a `bind_key`, or a freshly built `MetaData`, that no
+  persisting kernel used.
+- **On or off** — the flag parameter is read for truth, and an unset one means off, so a
+  library whose persistence an application turned off maps nothing. On with no driver handed
+  over is refused, as is a connection name nothing configured — both naming what is missing.
+- **Read while compiling** — both parameters are read before `%name%` references are resolved
+  and long before an `env(...)` one is, so a bundle sets them from its own resolved
+  configuration: a plain name and a plain flag. One still holding a `%name%` reference is
+  refused, naming the parameter, as is a connection parameter holding something that is not a
+  name at all — a name is never coerced out of it, since a connection may be called `7`.
+
 ## Console commands
 
 Every command takes `--connection NAME`; the default connection's is used without it. The

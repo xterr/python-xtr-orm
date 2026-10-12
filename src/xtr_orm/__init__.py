@@ -4,7 +4,8 @@ A :class:`~xtr_orm.migrations.Migrator` runs one database's revisions, a
 :class:`~xtr_orm.database.DatabaseManager` creates and drops the database
 itself, and a :class:`ConnectionRegistry` names every connection an
 application has. The bundle in :mod:`xtr_orm.bundle` builds all of them, and
-the engines and sessions, from one configuration.
+the engines and sessions, from one configuration — and a library bringing its
+own tables hands them over as a :class:`MappingDriverInterface`.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from .exception import (
     UnknownConnectionError,
     UnsupportedDatabaseError,
 )
+from .mapping_driver_interface import MappingDriverInterface
 from .migrations import (
     AvailableMigration,
     Direction,
@@ -49,6 +51,7 @@ __all__ = [
     "ExecutedMigration",
     "ExecutionResult",
     "InvalidArgumentError",
+    "MappingDriverInterface",
     "MigrationError",
     "MigrationPlan",
     "MigrationStatus",
