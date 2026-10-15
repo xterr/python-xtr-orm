@@ -1,7 +1,8 @@
 # The `orm:*` console commands
 
-Needs the `console` extra: `uv add "xtr-orm[console]"`. With a container, the bundle declares them
-when the console bundle is active, and each acts on the connections the bundle registered.
+Needs xtr-console installed beside xtr-orm: `uv add xtr-console`. With a container, the bundle
+declares them when the console bundle is active, and each acts on the connections the bundle
+registered.
 
 Every command takes `--connection NAME`; the default connection is used without it. The ones that
 change the database ask first, and `-n` answers yes. `--message` names the revision and its file.

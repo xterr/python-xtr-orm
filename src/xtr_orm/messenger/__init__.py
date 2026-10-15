@@ -7,7 +7,7 @@ messenger bundle is active, and the messenger bundle registers each by that
 name. Without one, build them with a :class:`~xtr_orm.ConnectionRegistry`
 and put the instances in the configuration.
 
-Needs the ``messenger`` extra: ``xtr-orm[messenger]``.
+Needs xtr-messenger installed beside this package.
 """
 
 from __future__ import annotations

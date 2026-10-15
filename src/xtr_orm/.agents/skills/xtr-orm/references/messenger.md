@@ -1,8 +1,8 @@
 # Message bus middleware
 
-Needs the `messenger` extra: `uv add "xtr-orm[messenger]"`. With both bundles active, importing
-`xtr_orm.messenger` is done for you and each middleware is registered under its name for a bus
-configuration to list.
+Needs xtr-messenger installed beside xtr-orm: `uv add xtr-messenger`. With both bundles active,
+importing `xtr_orm.messenger` is done for you and each middleware is registered under its name for
+a bus configuration to list.
 
 | Name | Class | Does | Arguments |
 |---|---|---|---|

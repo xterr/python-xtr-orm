@@ -17,7 +17,7 @@ registry.register("default", engine=engine, migrator=migrator, database=database
 command = MigrationsMigrateCommand(registry)
 ```
 
-Needs the ``console`` extra: ``xtr-orm[console]``.
+Needs xtr-console installed beside this package.
 """
 
 from __future__ import annotations

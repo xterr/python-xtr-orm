@@ -39,16 +39,22 @@ its engine and session options, where its revisions live — and get:
 ## Install
 
 ```sh
-uv add "xtr-orm[postgres]"                        # asyncpg
-uv add "xtr-orm[di,console,messenger,sqlite]"     # everything, on SQLite
+uv add "xtr-orm[postgres]"                            # asyncpg
+uv add "xtr-orm[postgres]" xtr-dependency-injection   # + the container, for the OrmBundle
+uv add xtr-console                                    # beside it: the orm:* commands
+uv add xtr-messenger                                  # beside it: the message bus middleware
 ```
 
 | Extra | Brings | For |
 |---|---|---|
 | `postgres` / `mysql` / `sqlite` | `asyncpg` / `asyncmy` / `aiosqlite` | The async driver of your database |
-| `di` | `xtr-dependency-injection` | The `OrmBundle`: engines, sessions, migrators from one configuration |
-| `console` | `xtr-console` | The `orm:*` commands |
-| `messenger` | `xtr-messenger` | The [message bus middleware](#message-bus-middleware) |
+
+No xtr package is an extra, and the container is not a dependency: the `OrmBundle` — engines,
+sessions, migrators from one configuration — is used when
+[xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, and a
+`Migrator` works without it, as the [Quick start](#quick-start) shows. Installed beside it too,
+[xtr-console](../xtr-console) brings the `orm:*` commands and [xtr-messenger](../xtr-messenger)
+the [message bus middleware](#message-bus-middleware).
 
 ## Quick start
 
@@ -160,9 +166,10 @@ Everything adding this package to an application on
 [xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what
 removing it undoes.
 
-- **Install** — `uv add "xtr-orm[di,console,postgres]"`; `mysql` or `sqlite` instead of
-  `postgres` for those databases; drop `console` to go without the commands; add `messenger`
-  for the [message bus middleware](#message-bus-middleware).
+- **Install** — `uv add "xtr-orm[postgres]" xtr-dependency-injection`: the bundle needs the
+  container installed beside it, never as an extra; `mysql` or `sqlite` instead of `postgres` for
+  those databases. Install xtr-console beside it for the `orm:*` commands, and xtr-messenger for
+  the [message bus middleware](#message-bus-middleware).
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure* and
   *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/orm.py` with the
   `default` connection, and `DATABASE_URL` in `.env`. It prints the middleware step, which a recipe
@@ -187,6 +194,10 @@ removing it undoes.
   `orm:migrations:status` reaches the database.
 
 ## Kernel / bundle
+
+With [xtr-dependency-injection](../xtr-dependency-injection) installed beside the package — it is
+not a dependency, and nothing outside `xtr_orm.bundle` needs it — list the bundle and name the
+connections:
 
 ```python
 # app/bundles.py
@@ -416,8 +427,8 @@ migrate = MigrationsMigrateCommand(registry)
 
 ## Message bus middleware
 
-With the `messenger` extra and a kernel running both bundles, a message handler asks for a
-session the way any service does, and three middleware — registered by name — decide what
+With xtr-messenger installed beside it and a kernel running both bundles, a message handler asks
+for a session the way any service does, and three middleware — registered by name — decide what
 happens to it. Nothing is added to a bus by itself: the bus lists the ones it wants.
 
 ```python

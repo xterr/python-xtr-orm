@@ -20,6 +20,9 @@ connection's name. Everything is async; there is no sync counterpart.
 - Write a revision from your models: `orm:migrations:diff --message "add invoices"`. Apply:
   `orm:migrations:migrate`. Read it: `orm:migrations:status`.
 - Without a container: `Migrator(engine, MigrationsConfig(directory="migrations"), Base.metadata)`.
+- In an application, with xtr-dependency-injection installed beside the package (it is not a
+  dependency): activate `OrmBundle` and inject what it registers. Only `xtr_orm.bundle` needs the
+  container.
 - A library bringing its own tables registers an `OrmMappingsPass` from its bundle's `build`; its
   driver's `load_metadata` must be idempotent.
 - One transaction per message: list `orm_transaction` in the bus's `middleware`; handlers never
@@ -187,8 +190,9 @@ tables and returns the names it added. Subclassing it has the type checker hold 
 
 ## Console commands
 
-Needs the `console` extra. Every command takes `--connection NAME`, defaulting to
-`OrmConfig.default_connection`. The ones that change the database ask first; `-n` answers yes.
+Needs xtr-console installed beside the package. Every command takes `--connection NAME`,
+defaulting to `OrmConfig.default_connection`. The ones that change the database ask first; `-n`
+answers yes.
 
 | Command | Does |
 |---|---|
@@ -224,8 +228,10 @@ migrate = MigrationsMigrateCommand(registry)
 writes a starting `config/orm.py` with the `default` connection, and `DATABASE_URL` in `.env`. That
 is the steps below a recipe can do; the middleware it prints for you to add.
 
-1. **Install** — `uv add "xtr-orm[di,console,postgres]"`; `mysql` or `sqlite` instead of
-   `postgres`; drop `console` to go without the commands; add `messenger` for the bus middleware.
+1. **Install** — `uv add "xtr-orm[postgres]" xtr-dependency-injection`: the bundle needs the
+   container installed beside it, never as an extra; `mysql` or `sqlite` instead of `postgres`.
+   Install xtr-console beside it for the `orm:*` commands, and xtr-messenger for the bus
+   middleware.
 2. **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
    (`from xtr_orm.bundle import OrmBundle`).
 3. **Brings along** — the logging and console bundles when those packages are installed, each
@@ -277,8 +283,8 @@ directory; a non-default connection defaults to `%kernel.project_dir%/migrations
 
 ## One transaction per message
 
-With the `messenger` extra and both bundles active, three middleware are registered by name.
-Nothing is added to a bus by itself — the bus lists what it wants, and order matters.
+With xtr-messenger installed beside it and both bundles active, three middleware are registered
+by name. Nothing is added to a bus by itself — the bus lists what it wants, and order matters.
 
 ```python
 # <app>/config/messenger.py

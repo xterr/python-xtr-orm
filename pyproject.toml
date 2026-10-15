@@ -39,16 +39,6 @@ sqlite = [
 mysql = [
     "asyncmy>=0.2.9",
 ]
-di = [
-    "xtr-dependency-injection>=4.0,<5",
-    "xtr-service-contracts>=4.0,<5",
-]
-console = [
-    "xtr-console>=4.0,<5",
-]
-messenger = [
-    "xtr-messenger>=4.0,<5",
-]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
 # Advertising activates nothing: an application lists the bundles it wants.
