@@ -9,7 +9,7 @@
 # Destination under the application package = template under this recipe.
 # The default connection on DATABASE_URL, written out so the application has
 # one place to add replicas, connections and its models' metadata.
-"config/orm.py" = "files/config/orm.py.tmpl"
+"config/packages/orm.py" = "files/config/orm.py.tmpl"
 
 [env]
 # Read when a connection is first used — engine, session, migrator or command —

@@ -16,7 +16,7 @@ configuration, so an untouched connection is left alone.
 ## Order
 
 ```python
-# <app>/config/messenger.py
+# <app>/config/packages/messenger.py
 MessageBusConfig(
     middleware=[
         "orm_close_connection",

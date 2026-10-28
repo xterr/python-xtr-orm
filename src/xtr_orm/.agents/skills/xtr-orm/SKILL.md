@@ -14,7 +14,7 @@ connection's name. Everything is async; there is no sync counterpart.
 
 - Inject `Injected[AsyncSession]` for the default connection;
   `Annotated[AsyncSession, Target("reports")]` for another. Never build a session yourself.
-- Name databases in `<app>/config/orm.py` with a `@configure` function returning `OrmConfig`.
+- Name databases in `<app>/config/packages/orm.py` with a `@configure` function returning `OrmConfig`.
 - Set `DATABASE_URL` with an async driver: `postgresql+asyncpg://`, `mysql+asyncmy://`,
   `sqlite+aiosqlite:///`. Engine and session options may ride on its query.
 - Write a revision from your models: `orm:migrations:diff --message "add invoices"`. Apply:
@@ -225,14 +225,14 @@ migrate = MigrationsMigrateCommand(registry)
 ## Use in an application
 
 `uv run xtr-recipes recipes:sync` applies the recipe shipped with this package: it lists `OrmBundle`,
-writes a starting `config/orm.py` with the `default` connection, and `DATABASE_URL` in `.env`. That
+writes a starting `config/packages/orm.py` with the `default` connection, and `DATABASE_URL` in `.env`. That
 is the steps below a recipe can do; the middleware it prints for you to add.
 
 1. **Install** — `uv add "xtr-orm[postgres]" xtr-dependency-injection`: the bundle needs the
    container installed beside it, never as an extra; `mysql` or `sqlite` instead of `postgres`.
    Install xtr-console beside it for the `orm:*` commands, and xtr-messenger for the bus
    middleware.
-2. **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
+2. **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`
    (`from xtr_orm.bundle import OrmBundle`).
 3. **Brings along** — the logging and console bundles when those packages are installed, each
    optional. With the logging bundle active an `orm` channel is added and every migrator logs the
@@ -242,7 +242,7 @@ is the steps below a recipe can do; the middleware it prints for you to add.
    advanced-alchemy registers.
 
    ```python
-   # <app>/config/orm.py
+   # <app>/config/packages/orm.py
    from xtr_dependency_injection import configure, env
    from xtr_orm.bundle import ConnectionConfig, MigrationsConfig, OrmConfig
 
@@ -274,7 +274,7 @@ is the steps below a recipe can do; the middleware it prints for you to add.
 8. **Check** — `debug:bundles` shows `orm` as `listed` and `active`, and
    `orm:migrations:status` reaches the database.
 9. **Remove** — take the `orm_*` entries out of every bus's `middleware`, drop the `BUNDLES`
-   entry, delete `<app>/config/orm.py`, then `uv remove xtr-orm`.
+   entry, delete `<app>/config/packages/orm.py`, then `uv remove xtr-orm`.
 
 `OrmConfig` has two fields: `default_connection` (`"default"`) and `connections`
 (`{"default": ConnectionConfig()}`). Two connections may not keep their revisions in one
@@ -287,7 +287,7 @@ With xtr-messenger installed beside it and both bundles active, three middleware
 by name. Nothing is added to a bus by itself — the bus lists what it wants, and order matters.
 
 ```python
-# <app>/config/messenger.py
+# <app>/config/packages/messenger.py
 MessageBusConfig(
     middleware=[
         "orm_close_connection",  # outermost: closes after the transaction ended

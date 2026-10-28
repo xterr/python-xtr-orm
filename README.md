@@ -171,15 +171,15 @@ removing it undoes.
   those databases. Install xtr-console beside it for the `orm:*` commands, and xtr-messenger for
   the [message bus middleware](#message-bus-middleware).
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure* and
-  *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/orm.py` with the
+  *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/packages/orm.py` with the
   `default` connection, and `DATABASE_URL` in `.env`. It prints the middleware step, which a recipe
   cannot make for you.
-- **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`, imported from
+- **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`, imported from
   `xtr_orm.bundle`.
 - **Brings along** — the logging and console bundles, when those packages are installed.
   With the messenger bundle active too, the [middleware](#message-bus-middleware) are
   registered for a bus to list.
-- **Configure** — the recipe writes a starting `<app>/config/orm.py` with the `default`
+- **Configure** — the recipe writes a starting `<app>/config/packages/orm.py` with the `default`
   connection reading `DATABASE_URL`, its revisions in `migrations` in the project directory and
   diffs against the models advanced-alchemy registers. Add connections, replicas and table
   definitions to that `@configure` function returning `OrmConfig` — see
@@ -189,7 +189,7 @@ removing it undoes.
   [Options in the URL](#options-in-the-url).
 - **Ignore** — nothing: commit `migrations/`.
 - **Remove** — take the `orm_*` entries out of every bus's `middleware`, drop the `BUNDLES`
-  entry, delete `<app>/config/orm.py`, then `uv remove xtr-orm`.
+  entry, delete `<app>/config/packages/orm.py`, then `uv remove xtr-orm`.
 - **Check** — `debug:bundles` shows `orm` as `listed` and `active`, and
   `orm:migrations:status` reaches the database.
 
@@ -200,14 +200,14 @@ not a dependency, and nothing outside `xtr_orm.bundle` needs it — list the bun
 connections:
 
 ```python
-# app/bundles.py
+# app/config/bundles.py
 from xtr_orm.bundle import OrmBundle
 
 BUNDLES = {OrmBundle: {"all": True}}
 ```
 
 ```python
-# app/config/orm.py
+# app/config/packages/orm.py
 from xtr_dependency_injection import configure, env
 from xtr_orm.bundle import ConnectionConfig, OrmConfig
 
@@ -447,7 +447,7 @@ class NotifyAccounting:
 ```
 
 ```python
-# app/config/messenger.py
+# app/config/packages/messenger.py
 MessageBusConfig(
     middleware=[
         "orm_close_connection",
