@@ -1,6 +1,6 @@
 [project]
 name = "xtr-orm"
-version = "4.1.0"
+version = "5.0.0"
 description = "Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,7 +26,7 @@ dependencies = [
     "alembic>=1.20",
     "sqlalchemy[asyncio]>=2.0.41",
     "typing-extensions>=4.4",
-    "xtr-logging-contracts>=4.0,<5",
+    "xtr-logging-contracts>=5.0,<6",
 ]
 
 [project.optional-dependencies]
@@ -59,11 +59,11 @@ dev = [
     "ty>=0.0.83",
     # Every test runs on SQLite files under the test's own directory: no server.
     "aiosqlite>=0.20",
-    "xtr-console>=4.0,<5",
-    "xtr-dependency-injection>=4.0,<5",
-    "xtr-logging>=4.0,<5",
-    "xtr-messenger>=4.0,<5",
-    "xtr-service-contracts>=4.0,<5",
+    "xtr-console>=5.0,<6",
+    "xtr-dependency-injection>=5.0,<6",
+    "xtr-logging>=5.0,<6",
+    "xtr-messenger>=5.0,<6",
+    "xtr-service-contracts>=5.0,<6",
 ]
 
 [build-system]
