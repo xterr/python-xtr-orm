@@ -172,8 +172,9 @@ removing it undoes.
   the [message bus middleware](#message-bus-middleware).
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure* and
   *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/packages/orm.py` with the
-  `default` connection, and `DATABASE_URL` in `.env`. It prints the middleware step, which a recipe
-  cannot make for you.
+  `default` connection, and `DATABASE_URL` in `.env`, and adds a PostgreSQL `database` service to
+  `compose.yaml`, published on `5432` in `compose.override.yaml`. It prints the middleware step,
+  which a recipe cannot make for you.
 - **Activate** — `OrmBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`, imported from
   `xtr_orm.bundle`.
 - **Brings along** — the logging and console bundles, when those packages are installed.
@@ -186,10 +187,14 @@ removing it undoes.
   [Kernel / bundle](#kernel--bundle).
 - **Environment** — `DATABASE_URL`, read when a connection is first used — engine, session,
   migrator or command — not when the application boots. Its query may carry options; see
-  [Options in the URL](#options-in-the-url).
+  [Options in the URL](#options-in-the-url). The recipe's value reaches the `database` service
+  `docker compose up -d database` starts; the `POSTGRES_*` variables that service reads, set in
+  the shell or `.env`, change its version, database, user and password — keep `DATABASE_URL` in
+  step with them.
 - **Ignore** — nothing: commit `migrations/`.
 - **Remove** — take the `orm_*` entries out of every bus's `middleware`, drop the `BUNDLES`
-  entry, delete `<app>/config/packages/orm.py`, then `uv remove xtr-orm`.
+  entry, delete `<app>/config/packages/orm.py` and the `xtr-orm` blocks in `compose.yaml` and
+  `compose.override.yaml`, then `uv remove xtr-orm`.
 - **Check** — `debug:bundles` shows `orm` as `listed` and `active`, and
   `orm:migrations:status` reaches the database.
 

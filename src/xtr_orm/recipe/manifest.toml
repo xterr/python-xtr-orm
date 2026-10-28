@@ -13,14 +13,47 @@
 
 [env]
 # Read when a connection is first used — engine, session, migrator or command —
-# not when the application boots. A local PostgreSQL to start from, for the
+# not when the application boots. The PostgreSQL compose.yaml runs, for the
 # postgres extra the README installs; change it, or put the real one in
 # .env.local.
-DATABASE_URL = "postgresql+asyncpg://app:change-me@127.0.0.1:5432/app"
+DATABASE_URL = "postgresql+asyncpg://app:!ChangeMe!@127.0.0.1:5432/app"
 
 [gitignore]
 # Nothing: migrations/ is committed.
 lines = []
+
+# A PostgreSQL for DATABASE_URL to reach: `docker compose up -d database`.
+# Kept verbatim: ${...} is Compose's own interpolation, read from the shell or .env.
+[compose."compose.yaml"]
+services = '''
+  database:
+    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      # You should definitely change the password in production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB:-app}", "-U", "${POSTGRES_USER:-app}"]
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - database_data:/var/lib/postgresql/data:rw
+      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
+      # - ./docker/db/data:/var/lib/postgresql/data:rw
+'''
+volumes = '''
+  database_data:
+'''
+
+# Development only: the database published on the port DATABASE_URL names.
+[compose."compose.override.yaml"]
+services = '''
+  database:
+    ports:
+      - "5432:5432"
+'''
 
 [notes]
 steps = [
@@ -30,3 +63,4 @@ check = [
   "<script> debug:bundles — orm is listed and active",
   "<script> orm:migrations:status — it reaches the database",
 ]
+run = ["docker compose up -d database — the PostgreSQL DATABASE_URL points at"]
