@@ -43,6 +43,7 @@ uv add "xtr-orm[postgres]"                            # asyncpg
 uv add "xtr-orm[postgres]" xtr-dependency-injection   # + the container, for the OrmBundle
 uv add xtr-console                                    # beside it: the orm:* commands
 uv add xtr-messenger                                  # beside it: the message bus middleware
+uv add "xtr-messenger[orm]"                           # beside it: the orm:// transport too
 ```
 
 | Extra | Brings | For |
@@ -54,7 +55,8 @@ sessions, migrators from one configuration — is used when
 [xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, and a
 `Migrator` works without it, as the [Quick start](#quick-start) shows. Installed beside it too,
 [xtr-console](../xtr-console) brings the `orm:*` commands and [xtr-messenger](../xtr-messenger)
-the [message bus middleware](#message-bus-middleware).
+the [message bus middleware](#message-bus-middleware); with
+[xtr-orm-messenger](../xtr-orm-messenger) as well, the [`orm://` transport](#message-bus-transport).
 
 ## Quick start
 
@@ -169,7 +171,8 @@ removing it undoes.
 - **Install** — `uv add "xtr-orm[postgres]" xtr-dependency-injection`: the bundle needs the
   container installed beside it, never as an extra; `mysql` or `sqlite` instead of `postgres` for
   those databases. Install xtr-console beside it for the `orm:*` commands, and xtr-messenger for
-  the [message bus middleware](#message-bus-middleware).
+  the [message bus middleware](#message-bus-middleware) — and xtr-orm-messenger, or
+  `xtr-messenger[orm]`, for the [`orm://` transport](#message-bus-transport).
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure* and
   *Environment* steps below: it lists `OrmBundle`, writes a starting `<app>/config/packages/orm.py` with the
   `default` connection, and `DATABASE_URL` in `.env`, and adds a PostgreSQL `database` service to
@@ -179,7 +182,8 @@ removing it undoes.
   `xtr_orm.bundle`.
 - **Brings along** — the logging and console bundles, when those packages are installed.
   With the messenger bundle active too, the [middleware](#message-bus-middleware) are
-  registered for a bus to list.
+  registered for a bus to list, and with xtr-orm-messenger installed the
+  [`orm://` transport](#message-bus-transport) too.
 - **Configure** — the recipe writes a starting `<app>/config/packages/orm.py` with the `default`
   connection reading `DATABASE_URL`, its revisions in `migrations` in the project directory and
   diffs against the models advanced-alchemy registers. Add connections, replicas and table
@@ -499,6 +503,34 @@ MessageBusConfig(
 Without a container, build them with a `ConnectionRegistry` whose connections are registered
 with a `session` — what returns the session the handlers use — and put the instances in the
 configuration.
+
+## Message bus transport
+
+With the messenger bundle active and [xtr-orm-messenger](../xtr-orm-messenger) installed —
+`uv add "xtr-messenger[orm]"` — a bus can keep its messages in a table on one of these
+connections. There is no bundle to list: this one registers the transport factory with the
+messenger, built on the connections, once it finds the package installed.
+
+```python
+# app/config/packages/messenger.py
+MessageBusConfig(
+    transports={"jobs": TransportConfig("orm://default", queue="jobs")},
+    routing={IngestDocument: "jobs"},
+)
+```
+
+- **The DSN names a connection.** `orm://default` is the `default` connection, `orm://` the
+  default one, whatever it is called; its URL stays in `OrmConfig`.
+- **Migrations write the table.** Each connection's migrator adds the messages table of every
+  `orm://` transport on it to its table definitions, so `orm:migrations:diff` writes it like
+  one of the application's own tables. The bus configuration is read for that when a migrator
+  is first built, so the environment variables its DSNs name must be set then. A connection
+  keeping several sets of table definitions is refused, naming it.
+- **Until the revision is applied**, the transport creates its table the first time it runs;
+  `auto_setup=false` on the DSN leaves it to the migrations alone.
+
+Options, workers and notifications are the transport's: see
+[xtr-orm-messenger](../xtr-orm-messenger).
 
 ## Creating and dropping databases
 

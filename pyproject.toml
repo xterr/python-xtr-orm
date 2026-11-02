@@ -63,6 +63,7 @@ dev = [
     "xtr-dependency-injection>=5.0,<6",
     "xtr-logging>=5.0,<6",
     "xtr-messenger>=5.0,<6",
+    "xtr-orm-messenger>=5.0,<6",
     "xtr-service-contracts>=5.0,<6",
 ]
 
@@ -147,6 +148,8 @@ unfixable = []
 # runtime, and the container resolves its config's fields; deferring these
 # would register the factories under nothing.
 "src/xtr_orm/bundle/*.py" = ["TC001", "TC002", "TC003"]
+# The same for the orm:// transport factory the bundle registers.
+"src/xtr_orm/messenger_transport.py" = ["TC001", "TC002", "TC003"]
 "tests/**/*.py" = [
     "S101",    # assert is the point of pytest
     "ARG",     # fixtures look unused

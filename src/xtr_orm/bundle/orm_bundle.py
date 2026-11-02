@@ -21,14 +21,20 @@ disposed when the container closes. When the console bundle is active, the
 ``orm_open_transaction_logger`` middleware are, for a bus to list; when the
 logging bundle is, an ``orm`` channel is added and every migrator logs there.
 
+With the messenger bundle active and xtr-orm-messenger installed, the
+``orm://`` transport is registered with the messenger too, built on these
+connections, and each connection's migrator writes the messages tables of the
+``orm://`` transports on it.
+
 Nothing connects until a service is first used, and a URL given as
 ``env(...)`` is read only then.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from functools import partial
+from importlib.util import find_spec
 from operator import contains
 from typing import Final, TypeVar, cast, final
 
@@ -37,6 +43,7 @@ from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemy
 from advanced_alchemy.config.routing import EngineConfig as ReplicaEngine
 from advanced_alchemy.config.routing import RoutingConfig, RoutingStrategy
 from advanced_alchemy.routing import RoutingAsyncSessionMaker, stick_to_primary_var
+from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from typing_extensions import override
 from xtr_dependency_injection import (
@@ -48,6 +55,7 @@ from xtr_dependency_injection import (
     current_unit_of_work,
     named_factory,
     optional_service,
+    qualified_name,
     required_bundle,
 )
 from xtr_logging_contracts import LoggerInterface
@@ -55,7 +63,7 @@ from xtr_service_contracts import ContainerInterface
 
 from xtr_orm.connection_registry import ConnectionRegistry
 from xtr_orm.database import DatabaseManager
-from xtr_orm.exception import SessionUnavailableError
+from xtr_orm.exception import InvalidArgumentError, SessionUnavailableError
 from xtr_orm.migrations import MigrationsConfig, Migrator
 
 from .connection_config import ConnectionConfig
@@ -70,6 +78,9 @@ _SessionMaker = type[async_sessionmaker[AsyncSession]] | type[RoutingAsyncSessio
 
 ORM_CHANNEL: Final = "orm"
 """The logging channel migrators write to."""
+
+_MESSENGER_TRANSPORT: Final = "xtr_orm_messenger"
+"""The package of the ``orm://`` transport, registered with the messenger when installed."""
 
 _PER_CONNECTION: Final[tuple[type, ...]] = (
     SQLAlchemyAsyncConfig,
@@ -108,6 +119,8 @@ class OrmBundle(Bundle[OrmConfig]):
         builder: ContainerBuilder,
     ) -> None:
         """Register every connection's services under its name, the registry, the commands."""
+        messenger = bundle_active(builder, "messenger")
+        transport = messenger and find_spec(_MESSENGER_TRANSPORT) is not None
         for name, connection in config.connections.items():
             maker_type: _SessionMaker = (
                 RoutingAsyncSessionMaker
@@ -123,7 +136,15 @@ class OrmBundle(Bundle[OrmConfig]):
                     else _session_maker_factory(name),
                     "session_maker",
                 ),
-                (_migrator_factory(name, connection), "migrator"),
+                (
+                    _migrator_factory(
+                        name,
+                        connection,
+                        default=config.default_connection,
+                        messages_tables=transport,
+                    ),
+                    "migrator",
+                ),
                 (_database_factory(connection), "database"),
             )
             for factory, kind in factories:
@@ -148,8 +169,37 @@ class OrmBundle(Bundle[OrmConfig]):
 
         if bundle_active(builder, "console"):
             services.load("xtr_orm.command")
-        if bundle_active(builder, "messenger"):
+        if messenger:
             services.load("xtr_orm.messenger")
+        if transport:
+            _register_orm_transport(services)
+
+
+def _register_orm_transport(services: ServiceConfigurator) -> None:
+    """Register the ``orm://`` transport factory with the messenger, built on these connections.
+
+    Registered under the messenger's transport factory interface and tagged
+    with its transport factory tag, which is how the messenger consults a
+    factory built from services ahead of the ones it discovers by DSN scheme.
+    """
+    # Optional peers: importable only once the messenger bundle is active and
+    # the transport installed, which the caller checked.
+    from xtr_messenger import TransportFactoryInterface  # noqa: PLC0415 — optional peer
+    from xtr_messenger.bundle import TRANSPORT_FACTORY_TAG  # noqa: PLC0415 — optional peer
+
+    from xtr_orm.messenger_transport import (  # noqa: PLC0415 — needs the optional peers
+        OrmTransportFactory,
+        orm_transport_factory,
+    )
+
+    qualifier = qualified_name(OrmTransportFactory)
+    _ = services.set(orm_transport_factory, qualifier=qualifier).add_tag(TRANSPORT_FACTORY_TAG)
+    services.alias(
+        TransportFactoryInterface,
+        OrmTransportFactory,
+        alias_qualifier=qualifier,
+        target_qualifier=qualifier,
+    )
 
 
 @final
@@ -291,9 +341,14 @@ def _session_factory(
 
 
 def _migrator_factory(
-    name: str, connection: ConnectionConfig
+    name: str, connection: ConnectionConfig, *, default: str, messages_tables: bool
 ) -> Callable[[ContainerInterface], Awaitable[Migrator]]:
-    """Build the factory of the connection ``name``'s migrator, logging to ``orm`` when it can."""
+    """Build the factory of the connection ``name``'s migrator, logging to ``orm`` when it can.
+
+    With ``messages_tables``, the messages tables of the ``orm://`` transports
+    on this connection join its table definitions first, so a diff writes them
+    like any of the application's own tables.
+    """
 
     async def migrator(container: ContainerInterface) -> Migrator:
         resolved = connection.with_url_options()
@@ -302,6 +357,8 @@ def _migrator_factory(
             if resolved.metadata is not None
             else metadata_registry.get(resolved.bind_key)
         )
+        if messages_tables:
+            await _map_messages_tables(container, name, default, metadata)
         built = Migrator(
             await container.get(AsyncEngine, name),
             resolved.migrations or MigrationsConfig(),
@@ -314,6 +371,44 @@ def _migrator_factory(
         return built
 
     return migrator
+
+
+async def _map_messages_tables(
+    container: ContainerInterface,
+    name: str,
+    default: str,
+    metadata: MetaData | Sequence[MetaData],
+) -> None:
+    """Add the messages table of every ``orm://`` transport on the connection ``name``.
+
+    The transports are read from the bus configuration as the application
+    resolved it, so a DSN given as ``env(...)`` is read here — when a migrator
+    is first built.
+
+    Raises:
+        InvalidArgumentError: When a transport keeps a table on a connection
+            that keeps several sets of table definitions.
+    """
+    # Optional peers: importable only once the messenger bundle is active and
+    # the transport installed, which the bundle checked.
+    from xtr_messenger import MessageBusConfig  # noqa: PLC0415 — optional peer
+    from xtr_orm_messenger import (  # noqa: PLC0415 — optional peer
+        MessagesTableDriver,
+        messages_tables,
+    )
+
+    bus = await optional_service(container, MessageBusConfig)
+    tables = messages_tables(bus, name, default) if bus is not None else ()
+    if not tables:
+        return
+    if not isinstance(metadata, MetaData):
+        raise InvalidArgumentError(
+            f'The "{name}" connection keeps several sets of table definitions; the messages '
+            f"tables of its orm:// transports need the one they belong to. Give that connection "
+            f"a single MetaData.",
+        )
+    for table in tables:
+        _ = MessagesTableDriver(table).load_metadata(metadata)
 
 
 def _database_factory(connection: ConnectionConfig) -> Callable[[], DatabaseManager]:

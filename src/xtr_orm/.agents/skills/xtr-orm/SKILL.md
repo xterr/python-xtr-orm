@@ -317,6 +317,23 @@ A handler asks for `Injected[AsyncSession]` like any service and adds rows; it n
 More, including building the middleware without a container:
 [references/messenger.md](references/messenger.md).
 
+## A queue in a table
+
+With the messenger bundle active and xtr-orm-messenger installed (`uv add "xtr-messenger[orm]"`),
+this bundle registers the `orm://` transport on its connections — no other bundle to list.
+
+```python
+# <app>/config/packages/messenger.py
+MessageBusConfig(
+    transports={"jobs": TransportConfig("orm://default", queue="jobs")},
+    routing={IngestDocument: "jobs"},
+)
+```
+
+Each connection's migrator adds the messages table of every `orm://` transport on it, so
+`orm:migrations:diff` writes it. The transport itself — options, workers, notifications — is
+the `xtr-orm-messenger` skill's.
+
 ## Creating and dropping a database
 
 ```python
