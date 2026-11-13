@@ -137,6 +137,29 @@ async def test_a_worker_run_by_a_command_gives_each_message_a_session_of_its_own
     assert await _names(engine) == ["queued:h", "queued:i"]
 
 
+async def test_a_message_held_back_in_a_worker_run_by_a_command_gets_a_session_of_its_own(
+    booted: BootedKernel, engine: AsyncEngine
+) -> None:
+    """Released once the message that held it back was committed, it joins
+    nothing of the command's: every message in flight would share that session."""
+    bus = await booted.container.get(MessageBusInterface)
+    sessions = await booted.container.get(Sessions)
+    given: list[AsyncSession] = []
+
+    async def consume(session: Injected[AsyncSession], workers: Injected[WorkerFactory]) -> None:
+        given.append(session)
+        await workers.worker(["jobs"]).run()
+
+    _ = await bus.dispatch(Envelope(QueuedNote("l", follow_up=True)))
+    _ = await bus.dispatch(Envelope(QueuedNote("m", follow_up=True)))
+    _ = await bind_callable(booted.container, consume, per_call_scope=True)()
+
+    seen = sessions.seen
+    used = [given[0], seen["queued:l"], seen["nested:l"], seen["queued:m"], seen["nested:m"]]
+    assert len({id(session) for session in used}) == 5
+    assert await _names(engine) == ["nested:l", "nested:m", "queued:l", "queued:m"]
+
+
 async def test_one_failing_handler_rolls_back_every_handler(
     booted: BootedKernel, engine: AsyncEngine
 ) -> None:

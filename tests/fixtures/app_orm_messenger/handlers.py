@@ -76,8 +76,13 @@ async def nested(
 
 @as_message_handler(QueuedNote)
 async def queued(
-    message: QueuedNote, session: Injected[AsyncSession], sessions: Injected[Sessions]
+    message: QueuedNote,
+    session: Injected[AsyncSession],
+    sessions: Injected[Sessions],
+    bus: Injected[MessageBusInterface],
 ) -> None:
     await _write(session, sessions, f"queued:{message.text}")
+    if message.follow_up:
+        _ = await bus.dispatch(NestedNote(message.text), DispatchAfterCurrentBusStamp())
     if message.fail:
         raise LookupError(message.text)

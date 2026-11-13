@@ -39,7 +39,12 @@ class NestedNote:
 @as_message(name="tests.orm.queued_note.v1")
 @dataclass(frozen=True, slots=True)
 class QueuedNote:
-    """Routed to the ``jobs`` transport: written only once a worker handles it."""
+    """Routed to the ``jobs`` transport: written only once a worker handles it.
+
+    With ``follow_up``, its handler holds a :class:`NestedNote` back until it
+    was handled.
+    """
 
     text: str
     fail: bool = False
+    follow_up: bool = False
