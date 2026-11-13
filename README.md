@@ -496,6 +496,12 @@ MessageBusConfig(
   ```python
   await bus.dispatch(SendReceipt(order.id), DispatchAfterCurrentBusStamp())
   ```
+
+  Handled by the worker whose message held it back, it is a unit of work of its own: a session
+  and a transaction of its own, whatever runs the worker.
+- **A worker's event listener is outside every transaction.** It runs outside the message's
+  unit of work, so a session it asks for is built for that call alone and nothing commits it:
+  dispatch a message to write, or commit it yourself.
 - **A dropped connection** is found by the engine option `pool_pre_ping` as a connection is
   taken from the pool — `?pool_pre_ping=true` on a worker's URL — so there is no middleware
   for that.

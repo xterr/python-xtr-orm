@@ -65,7 +65,10 @@ class NotifyAccounting:
   ```
 
   With that stamp it goes out only once the message being handled was committed, and never after a
-  rollback.
+  rollback. Handled by the worker whose message held it back, it has a session and a transaction of
+  its own.
+- **A worker's event listener is outside every transaction.** A session it asks for is built for
+  that call alone and nothing commits it: dispatch a message to write, or commit it yourself.
 - **Only messages a worker consumed** — one carrying a `ReceivedStamp` on arrival — close
   connections afterwards. A message handled during its dispatch, `sync://` included, closes
   nothing. A worker handling several at once closes once the last is done.
