@@ -28,6 +28,10 @@ connection's name. Everything is async; there is no sync counterpart.
 - One transaction per message: list `orm_transaction` in the bus's `middleware`; handlers never
   commit.
 - On SQLite, set `MigrationsConfig(render_as_batch=True)` or table alterations cannot be written.
+- SQLite is for development and tests only. For real transactions there (savepoints undone by an
+  outer rollback), pass `engine_options={"connect_args": {"autocommit": False}}` on Python 3.12+.
+- Outside debug `hide_parameters` is on: SQL errors leave bound values out. `?hide_parameters=false`
+  shows them.
 
 ## Inject a session
 
@@ -308,6 +312,11 @@ A handler asks for `Injected[AsyncSession]` like any service and adds rows; it n
 
 - Every handler of a message shares one session per connection. A message dispatched while
   another is handled joins its unit of work, in a savepoint of its own.
+- A message dispatched by code holding an open transaction (a route that wrote, then dispatched)
+  runs in a savepoint of it and commits nothing of the caller's: the caller still commits its
+  own work. A message a worker received owns its transaction.
+- Never `asyncio.gather` dispatches that share one unit's session; give concurrent work its own
+  `unit_of_work(container, join=False)`.
 - A follow-up dispatched to a transport goes out at once unless stamped:
   `await bus.dispatch(SendReceipt(order.id), DispatchAfterCurrentBusStamp())` sends it only after
   the commit, and never after a rollback.

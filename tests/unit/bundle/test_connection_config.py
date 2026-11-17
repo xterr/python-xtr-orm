@@ -159,3 +159,16 @@ def test_the_repr_keeps_every_other_field() -> None:
 
     assert "engine_options={'pool_size': 5}" in shown
     assert "bind_key='reports'" in shown
+
+
+def test_repr_masks_connect_args_secrets() -> None:
+    config = ConnectionConfig(
+        engine_options={"pool_size": 5, "connect_args": {"password": "s3cret", "ssl": "require"}},
+    )
+
+    shown = repr(config)
+
+    assert "s3cret" not in shown
+    assert "require" not in shown
+    assert "'connect_args': {'password': '***', 'ssl': '***'}" in shown
+    assert "'pool_size': 5" in shown

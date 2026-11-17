@@ -9,14 +9,20 @@ from typing import TYPE_CHECKING, Final, final
 from sqlalchemy.orm import SessionTransactionOrigin
 from typing_extensions import override
 from xtr_logging_contracts import LoggerInterface, NullLogger
-from xtr_messenger import Envelope, MiddlewareInterface, StackInterface, as_middleware
+from xtr_messenger import (
+    Envelope,
+    MiddlewareInterface,
+    StackInterface,
+    TransportMessageIdStamp,
+    as_middleware,
+)
 
 from xtr_orm.connection_registry import ConnectionRegistry
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["OpenTransactionLoggerMiddleware"]
+__all__ = ["DETACHED_VARIABLE", "OpenTransactionLoggerMiddleware"]
 
 _OPENED: Final = frozenset({SessionTransactionOrigin.BEGIN, SessionTransactionOrigin.BEGIN_NESTED})
 """How a transaction a handler opened itself began; the session's own autobegin is not one."""
@@ -24,8 +30,30 @@ _OPENED: Final = frozenset({SessionTransactionOrigin.BEGIN, SessionTransactionOr
 _DISCARD: Final = NullLogger()
 """Where findings go without a logger."""
 
-# Set while a message is checked, so a message dispatched during it is not checked twice.
-_handling: ContextVar[bool] = ContextVar("xtr_orm_open_transaction_logging", default=False)
+
+@final
+class _Checking:
+    """A message being checked, open until its check is done."""
+
+    __slots__ = ("open",)
+
+    def __init__(self) -> None:
+        self.open = True
+
+
+# Set while a message is checked, so a message dispatched during it is not
+# checked twice. Closed once the check is done, so work outliving the message —
+# a task its handler started — is checked on its own.
+_handling: ContextVar[_Checking | None] = ContextVar(
+    "xtr_orm_open_transaction_logging", default=None
+)
+
+DETACHED_VARIABLE: Final = (_handling, None)
+"""What a new connection starts without: an earlier request's message being checked.
+
+The orm bundle registers it with the container when the messenger bundle is
+active.
+"""
 
 
 @final
@@ -61,16 +89,19 @@ class OpenTransactionLoggerMiddleware(MiddlewareInterface):
     @override
     async def handle(self, envelope: Envelope, stack: StackInterface, /) -> Envelope:
         """Run the rest of the chain, then log each connection left with a transaction open."""
-        if _handling.get():
+        checking = _handling.get()
+        if checking is not None and checking.open:
             return await stack.next().handle(envelope, stack)
         initial = {
             name: _opened(await self._connections.session(name))
             for name in self._connection_names or self._connections.in_use()
         }
-        token = _handling.set(True)
+        checking = _Checking()
+        token = _handling.set(checking)
         try:
             handled = await stack.next().handle(envelope, stack)
         finally:
+            checking.open = False
             _handling.reset(token)
         # Read again: a connection the handlers put in use is checked too.
         left = [
@@ -79,10 +110,15 @@ class OpenTransactionLoggerMiddleware(MiddlewareInterface):
             if _opened(await self._connections.session(name)) > initial.get(name, 0)
         ]
         if left:
-            self._logger.error(
-                "A handler opened a transaction but did not close it.",
-                {"connections": left, "message": envelope.message},
-            )
+            # The message's type and id only: its body may carry anything a producer put in it.
+            context: dict[str, object] = {
+                "connections": left,
+                "message_type": type(envelope.message).__qualname__,
+            }
+            transport_id = envelope.last(TransportMessageIdStamp)
+            if transport_id is not None:
+                context["message_id"] = transport_id.message_id
+            self._logger.error("A handler opened a transaction but did not close it.", context)
         return handled
 
 

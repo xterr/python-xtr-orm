@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import anyio
 import pytest
+from sqlalchemy import text
 from xtr_messenger import Envelope, ReceivedStamp
 
 from tests.support.sessions import Sessions
@@ -86,6 +87,23 @@ async def test_connections_are_closed_even_when_handling_failed(sessions: Sessio
     with pytest.raises(LookupError):
         _ = await CloseConnectionMiddleware(sessions.registry).handle(CONSUMED, Then(_failing))
 
+    assert sessions.closed == ["default", "reports"]
+
+
+async def test_the_units_session_gives_its_connection_back_before_the_pool_is_closed(
+    sessions: Sessions,
+) -> None:
+    session = sessions.by_name["default"]
+
+    async def read_without_committing(envelope: Envelope) -> Envelope:
+        _ = await session.execute(text("select 1"))
+        return envelope
+
+    _ = await CloseConnectionMiddleware(sessions.registry).handle(
+        CONSUMED, Then(read_without_committing)
+    )
+
+    assert not session.in_transaction()
     assert sessions.closed == ["default", "reports"]
 
 

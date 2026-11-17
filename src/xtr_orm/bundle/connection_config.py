@@ -37,6 +37,9 @@ _SET_BY_THE_BUNDLE: Final = frozenset(
 
 _NOTHING: Final[frozenset[str]] = frozenset()
 
+_HIDDEN: Final = "***"
+"""What a hidden value renders as: the mask a URL's hidden password renders with."""
+
 
 def _flag(value: str) -> bool:
     lowered = value.strip().lower()
@@ -179,12 +182,18 @@ class ConnectionConfig:
 
         A configuration is read back by a diagnostics report, a build error and
         a debugger, so its URLs are rendered the way a message renders one.
+        The driver's connect arguments may carry a password or a key, and are
+        named by the driver, so each of their values is hidden as well.
         """
         shown: dict[str, object] = {
             each.name: cast("object", getattr(self, each.name)) for each in dataclasses.fields(self)
         }
         shown["url"] = _without_password(self.url)
         shown["replicas"] = {name: _without_password(url) for name, url in self.replicas.items()}
+        connect_args = self.engine_options.get("connect_args")
+        if isinstance(connect_args, Mapping):
+            hidden = dict.fromkeys(cast("Mapping[str, object]", connect_args), _HIDDEN)
+            shown["engine_options"] = {**self.engine_options, "connect_args": hidden}
         rendered = ", ".join(f"{name}={value!r}" for name, value in shown.items())
         return f"{type(self).__name__}({rendered})"
 

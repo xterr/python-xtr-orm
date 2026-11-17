@@ -28,6 +28,8 @@ MessageBusConfig(
 ```
 
 - `orm_close_connection` outermost, so it closes after the transaction ended.
+  It closes the unit's session on each connection before dropping its pool; when the worker
+  consumes `orm://` on one of them, list only the other connections in `connection_names`.
 - `orm_open_transaction_logger` inside `orm_transaction`, so it looks before the commit closes
   everything.
 - A second `orm_transaction` with another `connection_name` puts that connection in a transaction

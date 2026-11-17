@@ -50,6 +50,12 @@ uv add "xtr-messenger[orm]"                           # beside it: the orm:// tr
 |---|---|---|
 | `postgres` / `mysql` / `sqlite` | `asyncpg` / `asyncmy` / `aiosqlite` | The async driver of your database |
 
+SQLite is for development and tests, not production. Its Python driver runs in a legacy
+transaction mode by default: it begins no transaction for a read or a `SAVEPOINT`, so an outer
+rollback does not undo a savepoint that was already released. On Python 3.12 and later, the
+driver's own setting gives it real transactions — pass it through the engine options:
+`engine_options={"connect_args": {"autocommit": False}}`.
+
 No xtr package is an extra, and the container is not a dependency: the `OrmBundle` — engines,
 sessions, migrators from one configuration — is used when
 [xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, and a
@@ -308,6 +314,11 @@ Flags read `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`; numbers are numbers
 takes `debug`. A value that does not read fails the service that needed the URL, naming the
 option. Only the connection's own URL is read this way, not its replicas'.
 
+Outside debug (`kernel.debug` false), `hide_parameters` defaults to on: an error raised by a
+failed statement leaves its bound values out of its message and the logs — an email, a token.
+Set it in the engine options or the URL (`?hide_parameters=false`) to see them. A connection's
+`repr` hides the password of every URL and every value of `connect_args`.
+
 ### Read replicas
 
 With `replicas`, a session reads from a replica picked at random, and goes to the primary —
@@ -315,6 +326,8 @@ With `replicas`, a session reads from a replica picked at random, and goes to th
 sees what it wrote. It stays there for the rest of its unit of work, unless `keep_replica`
 sends it back to the replicas once it commits. Each unit of work starts on the replicas,
 whatever the one before wrote. Migrations and the database commands always use the primary.
+The bundle's `StickinessParticipant` keeps that per unit: a unit's writes stick only that unit to
+the primary, and a child task's writes do not stick its parent, whose context it only copied.
 
 A block can be sent elsewhere with advanced-alchemy's `primary_context()` and
 `replica_context()`, from `advanced_alchemy.routing`.
@@ -404,7 +417,7 @@ commands that change the database ask first; `-n` answers yes.
 |---|---|
 | `orm:database:create [--if-not-exists]` | Creates the database, through the server's maintenance database |
 | `orm:database:drop --force [--if-exists]` | Drops it; refused without `--force` |
-| `orm:run-sql SQL [--force-fetch]` | Runs a statement, committed; shows its rows or how many it changed — when the driver can tell |
+| `orm:run-sql SQL [--force-fetch]` | Runs a statement as written, committed — a `:word` is never read as a parameter; shows its rows or how many it changed — when the driver can tell |
 | `orm:migrations:current` | The revisions the database is at — `base` for none |
 | `orm:migrations:latest` | The revisions no other follows |
 | `orm:migrations:list` | Every revision with its status, when it ran and how long it took |
@@ -471,7 +484,7 @@ MessageBusConfig(
 |---|---|---|---|
 | `orm_transaction` | `TransactionMiddleware` | Runs every handler of a message in one transaction, committed once they all succeeded and rolled back otherwise; a failure drops the other handlers' handled stamps, so a retry runs them all again | `connection_name`, the default connection when left out |
 | `orm_close_connection` | `CloseConnectionMiddleware` | Closes the connections once a worker handled a message it consumed, so an idle worker holds none — once the last, when it handles several at once | `connection_names`, every connection in use — its engine built — when left out |
-| `orm_open_transaction_logger` | `OpenTransactionLoggerMiddleware` | Logs an error — to the application's logger when the logging bundle is active — when a handler began a transaction — `begin()`, `begin_nested()` — and left it open, in a message that was handled | `connection_names`, every connection in use — its engine built — when left out |
+| `orm_open_transaction_logger` | `OpenTransactionLoggerMiddleware` | Logs an error — to the application's logger when the logging bundle is active — when a handler began a transaction — `begin()`, `begin_nested()` — and left it open, in a message that was handled; the record names the connections, the message's `message_type` and its transport `message_id`, never its body | `connection_names`, every connection in use — its engine built — when left out |
 
 - **One session per message.** The messenger bundle makes every message a unit of work, and a
   scoped service — the session, a repository built on it — is the unit's: every handler of
@@ -479,6 +492,15 @@ MessageBusConfig(
   dispatched while another is handled joins its unit, and its transaction — in a savepoint of
   its own, so when it fails only its handlers' work is rolled back, and the handler that
   dispatched it decides whether the rest goes on.
+- **The caller's transaction stays the caller's.** A message dispatched by code that already
+  has a transaction open on the session — a route that wrote, then dispatched over `sync://`
+  — runs in a savepoint of it: a failing message leaves the caller's work in place, and a
+  succeeding one commits nothing, so the caller still commits (or rolls back) its own work. A
+  message a worker received owns its transaction, whatever an earlier middleware read.
+- **Dispatch one message at a time per unit.** Messages handled at once by tasks sharing the
+  unit's session (`asyncio.gather` of dispatches) interleave on its one transaction, and one
+  message's rollback can undo another's work; give concurrent work units of its own
+  (`unit_of_work(join=False)`).
 - **Handlers do not commit** under `orm_transaction`; a handler that does ends the
   transaction early, and one using `async with session.begin()` is refused, the transaction
   being open already.
@@ -488,6 +510,10 @@ MessageBusConfig(
 - **Only messages a worker consumed are closed after** — one carrying a `ReceivedStamp` on
   arrival. A message handled during its dispatch, `sync://` included, closes nothing. A worker
   handling several at once closes once the last of them is done, keeping its pool meanwhile.
+  The unit's session on each connection is closed first, so a message that read and never
+  committed gives its connection back before the pool is dropped. A worker consuming an
+  `orm://` transport on the same connection reconnects for every poll after that: name only the
+  other connections in `connection_names` there.
 - **Follow-ups wait for the commit when stamped.** A message a handler dispatches to a
   transport is sent at once — before the commit, and whether or not it comes. Dispatch it
   with `DispatchAfterCurrentBusStamp` and it goes out only once the message being handled
@@ -568,8 +594,9 @@ Every error derives from `OrmError`.
 ## Known limitations
 
 - **Migrations take no lock.** Two processes migrating one database at once — two deploys
-  starting together — both run the same revisions; run `orm:migrations:migrate` from one
-  place, before the application starts.
+  starting together — race: on PostgreSQL the loser fails on recording a revision already
+  recorded and rolls its transaction back; elsewhere a revision may run twice. Run
+  `orm:migrations:migrate` from one place, before the application starts.
 - **Applied times follow the database.** `executed_at` has a time zone on PostgreSQL and is
   naive elsewhere: UTC on SQLite, the session's time zone on MySQL.
 - **advanced-alchemy's model registry is process-wide.** Its `metadata_registry` maps a
@@ -579,6 +606,11 @@ Every error derives from `OrmError`.
   alone only where the database stays consistent — see [Migrations](#migrations). The history
   table records every one.
 - **Async only**: engines and sessions are async; there is no sync counterpart.
+
+## Upgrading
+
+What changes for an application moving to 7.0, and how to keep the old behaviour where that is
+still possible: [Upgrading to 7.0](../../UPGRADING.md#xtr-orm).
 
 ## Development
 

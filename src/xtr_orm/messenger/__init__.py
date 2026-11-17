@@ -14,10 +14,11 @@ from __future__ import annotations
 
 from .close_connection_middleware import CloseConnectionMiddleware
 from .open_transaction_logger_middleware import OpenTransactionLoggerMiddleware
-from .transaction_middleware import TransactionMiddleware
+from .transaction_middleware import TransactionMiddleware, in_begun_transaction
 
 __all__ = [
     "CloseConnectionMiddleware",
     "OpenTransactionLoggerMiddleware",
     "TransactionMiddleware",
+    "in_begun_transaction",
 ]

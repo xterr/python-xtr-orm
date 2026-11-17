@@ -15,7 +15,7 @@ from xtr_messenger import (
 )
 
 from xtr_orm.connection_registry import ConnectionRegistry
-from xtr_orm.exception import UnknownConnectionError
+from xtr_orm.exception import SessionUnavailableError, UnknownConnectionError
 
 __all__ = ["CloseConnectionMiddleware"]
 
@@ -70,5 +70,21 @@ class CloseConnectionMiddleware(MiddlewareInterface):
         finally:
             self._consumed -= 1
             if self._consumed == 0:
-                for name in self._connection_names or self._connections.in_use():
-                    await self._connections.close(name)
+                await self._close()
+
+    async def _close(self) -> None:
+        """Close each connection, its unit's session first so its connection goes back to the pool.
+
+        A session still holding a connection — one that read and never
+        committed — would keep it checked out of the pool being disposed.
+        """
+        in_use = self._connections.in_use()
+        for name in self._connection_names or in_use:
+            if name in in_use:
+                try:
+                    session = await self._connections.session(name)
+                except SessionUnavailableError:
+                    pass
+                else:
+                    await session.close()
+            await self._connections.close(name)

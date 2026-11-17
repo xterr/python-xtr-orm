@@ -36,31 +36,35 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from functools import partial
 from importlib.util import find_spec
 from operator import contains
-from typing import Final, TypeVar, cast, final
+from typing import Annotated, Final, TypeVar, cast, final
 
 from advanced_alchemy.base import metadata_registry
 from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemyAsyncConfig
 from advanced_alchemy.config.routing import EngineConfig as ReplicaEngine
 from advanced_alchemy.config.routing import RoutingConfig, RoutingStrategy
-from advanced_alchemy.routing import RoutingAsyncSessionMaker, stick_to_primary_var
+from advanced_alchemy.routing import RoutingAsyncSessionMaker
 from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from typing_extensions import override
 from xtr_dependency_injection import (
+    UNIT_PARTICIPANT_TAG,
+    Autowire,
     Bundle,
     ContainerBuilder,
     ServiceConfigurator,
     as_bundle,
     bundle_active,
-    current_unit_of_work,
     named_factory,
+    open_unit_of,
     optional_service,
     qualified_name,
     required_bundle,
 )
+from xtr_dependency_injection.integration import register_detached_variable
 from xtr_logging_contracts import LoggerInterface
 from xtr_service_contracts import ContainerInterface
 
+from xtr_orm import stickiness_participant
 from xtr_orm.connection_registry import ConnectionRegistry
 from xtr_orm.database import DatabaseManager
 from xtr_orm.exception import InvalidArgumentError, SessionUnavailableError
@@ -166,13 +170,31 @@ class OrmBundle(Bundle[OrmConfig]):
             name: bool(connection.replicas) for name, connection in config.connections.items()
         }
         _ = services.set(_connection_registry_factory(config.default_connection, routed))
+        if any(routed.values()):
+            _ = services.set(stickiness_participant.StickinessParticipant).add_tag(
+                UNIT_PARTICIPANT_TAG
+            )
+            register_detached_variable(*stickiness_participant.DETACHED_VARIABLE)
 
         if bundle_active(builder, "console"):
             services.load("xtr_orm.command")
         if messenger:
             services.load("xtr_orm.messenger")
+            _detach_messenger_middleware()
         if transport:
             _register_orm_transport(services)
+
+
+def _detach_messenger_middleware() -> None:
+    """Register what the message bus middleware keeps per message as what a new connection lacks."""
+    # Optional peer: importable once the messenger bundle is active, which the caller checked.
+    from xtr_orm.messenger import (  # noqa: PLC0415 — needs the optional peer
+        open_transaction_logger_middleware,
+        transaction_middleware,
+    )
+
+    register_detached_variable(*transaction_middleware.DETACHED_VARIABLE)
+    register_detached_variable(*open_transaction_logger_middleware.DETACHED_VARIABLE)
 
 
 def _register_orm_transport(services: ServiceConfigurator) -> None:
@@ -214,7 +236,7 @@ class _ConnectionsInUse:
 
 def _alchemy_factory(
     name: str, connection: ConnectionConfig
-) -> Callable[[_ConnectionsInUse], AsyncIterator[SQLAlchemyAsyncConfig]]:
+) -> Callable[[_ConnectionsInUse, bool], AsyncIterator[SQLAlchemyAsyncConfig]]:
     """Build the factory of the connection ``name``'s database layer configuration.
 
     It owns every engine of the connection — the primary's, and each
@@ -224,11 +246,17 @@ def _alchemy_factory(
     that one alone, so a connection never reads another's variables.
     """
 
-    async def alchemy(in_use: _ConnectionsInUse) -> AsyncIterator[SQLAlchemyAsyncConfig]:
+    async def alchemy(
+        in_use: _ConnectionsInUse,
+        debug: Annotated[bool, Autowire(param="kernel.debug")],
+    ) -> AsyncIterator[SQLAlchemyAsyncConfig]:
         resolved = connection.with_url_options()
         # The options are forwarded by name, each checked against the target's
-        # fields by ConnectionConfig; their values are the application's.
-        engine = cast("Callable[..., EngineConfig]", EngineConfig)(**resolved.engine_options)
+        # fields by ConnectionConfig; their values are the application's. Outside
+        # debug, a failed statement's error leaves its bound values out — an email,
+        # a token — unless the application asks for them.
+        engine_options = {"hide_parameters": not debug, **resolved.engine_options}
+        engine = cast("Callable[..., EngineConfig]", EngineConfig)(**engine_options)
         session = cast("Callable[..., AsyncSessionConfig]", AsyncSessionConfig)(
             **resolved.session_options
         )
@@ -321,21 +349,14 @@ def _session_factory(
     disposes — and an application that replaces that service is obeyed.
 
     Closing rolls back what was not committed: committing is the unit's job.
-    With replicas, a unit starts reading from them whatever the unit before it
-    wrote: sticking to the primary after a write is one unit's state, forgotten
-    when the unit ends — not when another of its sessions opens, which would
-    send the reads after a write to a replica.
+    With replicas, which the unit reads from — its own state, not the
+    session's — is kept by :class:`~xtr_orm.stickiness_participant.StickinessParticipant`.
     """
-    routed = maker_type is RoutingAsyncSessionMaker
 
     async def session(container: ContainerInterface) -> AsyncIterator[AsyncSession]:
         maker = await container.get(maker_type, name)
-        try:
-            async with maker() as opened:
-                yield opened
-        finally:
-            if routed:
-                _ = stick_to_primary_var.set(False)
+        async with maker() as opened:
+            yield opened
 
     return session
 
@@ -446,7 +467,7 @@ def _connection_registry_factory(
                 engine=_provider(container, AsyncEngine, name),
                 migrator=_provider(container, Migrator, name),
                 database=_provider(container, DatabaseManager, name),
-                session=_unit_session(name),
+                session=_unit_session(container, name),
                 close=_closer(container, name, routed=replicated),
                 in_use=partial(contains, in_use.names, name),
             )
@@ -455,9 +476,13 @@ def _connection_registry_factory(
     return connection_registry
 
 
-def _unit_session(name: str) -> Callable[[], Awaitable[AsyncSession]]:
+def _unit_session(
+    container: ContainerInterface, name: str
+) -> Callable[[], Awaitable[AsyncSession]]:
+    """Reach the session of the unit of work open on ``container`` — never another kernel's."""
+
     async def session() -> AsyncSession:
-        unit = current_unit_of_work()
+        unit = open_unit_of(container)
         if unit is None:
             raise SessionUnavailableError(name, "no unit of work is under way")
         return await unit.get(AsyncSession, name)

@@ -62,3 +62,16 @@ async def test_force_fetch_reads_a_statement_as_a_query(tester: ApplicationTeste
 async def test_a_failing_statement_fails_the_run(tester: ApplicationTester) -> None:
     assert await tester.execute(["orm:run-sql", "select * from nowhere"]) == ExitCode.FAILURE
     assert "no such table" in output(tester)
+
+
+async def test_a_colon_word_in_a_literal_is_left_alone(tester: ApplicationTester) -> None:
+    code = await tester.execute(["orm:run-sql", "select 'a :b' as said"])
+
+    assert code == ExitCode.SUCCESS
+    assert "a :b" in output(tester)
+
+
+async def test_a_placeholder_without_a_value_is_the_databases_error(
+    tester: ApplicationTester,
+) -> None:
+    assert await tester.execute(["orm:run-sql", "select :x"]) == ExitCode.FAILURE

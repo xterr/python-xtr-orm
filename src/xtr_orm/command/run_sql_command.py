@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast, final
 
-from sqlalchemy import Row, text
+from sqlalchemy import Row
 from sqlalchemy.exc import SQLAlchemyError
 from xtr_console import ConsoleStyle, ExitCode, as_command, escape
 
@@ -46,7 +46,10 @@ class RunSqlCommand(ConnectionCommand):
         affected = 0
         try:
             async with engine.begin() as opened:
-                result = await opened.execute(text(sql))
+                # Run as written: a colon word in a literal is not a parameter here.
+                result = await opened.exec_driver_sql(
+                    sql, execution_options={"no_parameters": True}
+                )
                 if result.returns_rows:
                     columns = [str(column) for column in result.keys()]  # noqa: SIM118 — a result's keys are its columns, not a dict's
                     rows = [[_cell(value) for value in _values(row)] for row in result.all()]

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import select
 from xtr_logging import Logger, TestHandler
 from xtr_logging_contracts import Level
-from xtr_messenger import Envelope
+from xtr_messenger import Envelope, TransportMessageIdStamp
 
 from tests.support.sessions import Sessions
 from tests.support.stack import Then
@@ -53,7 +54,23 @@ async def test_a_transaction_a_handler_began_and_left_open_is_logged(sessions: S
     [record] = handler.records
     assert record.level is Level.ERROR
     assert record.message == "A handler opened a transaction but did not close it."
-    assert record.context == {"connections": ["reports"], "message": "message"}
+    assert record.context == {"connections": ["reports"], "message_type": "str"}
+
+
+async def test_the_message_body_is_not_logged(sessions: Sessions) -> None:
+    logger, handler = _logged()
+    middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
+
+    async def leave_open(envelope: Envelope) -> Envelope:
+        _ = await sessions.by_name["default"].begin()
+        return envelope
+
+    received = Envelope("card 4111 1111 1111 1111", (TransportMessageIdStamp("42"),))
+    _ = await middleware.handle(received, Then(leave_open))
+
+    [record] = handler.records
+    assert record.context == {"connections": ["default"], "message_type": "str", "message_id": "42"}
+    assert "4111" not in str(record.context)
 
 
 async def test_a_transaction_left_open_by_a_failing_handler_is_not(sessions: Sessions) -> None:
@@ -122,7 +139,7 @@ async def test_a_connection_the_message_put_in_use_is_checked(sessions: Sessions
     _ = await middleware.handle(Envelope("message"), Then(leave_open))
 
     [record] = handler.records
-    assert record.context == {"connections": ["reports"], "message": "message"}
+    assert record.context == {"connections": ["reports"], "message_type": "str"}
 
 
 async def test_only_the_connections_named_are_checked(sessions: Sessions) -> None:
@@ -155,6 +172,37 @@ async def test_a_message_dispatched_during_another_is_checked_once(sessions: Ses
     _ = await middleware.handle(Envelope("message"), Then(outer))
 
     assert len(handler.records) == 1
+
+
+async def test_a_task_outliving_the_check_does_not_see_it(sessions: Sessions) -> None:
+    logger, handler = _logged()
+    middleware = OpenTransactionLoggerMiddleware(sessions.registry, logger)
+    gate = asyncio.Event()
+    outliving: list[asyncio.Task[Envelope]] = []
+
+    async def leave_open(envelope: Envelope) -> Envelope:
+        _ = await sessions.by_name["default"].begin()
+        return envelope
+
+    async def later_on() -> Envelope:
+        _ = await gate.wait()
+        later = Envelope("later", (TransportMessageIdStamp("later"),))
+        return await middleware.handle(later, Then(leave_open))
+
+    async def spawn(envelope: Envelope) -> Envelope:
+        outliving.append(asyncio.create_task(later_on()))
+        return envelope
+
+    _ = await middleware.handle(Envelope("message"), Then(spawn))
+    gate.set()
+    _ = await outliving[0]
+
+    [record] = handler.records
+    assert record.context == {
+        "connections": ["default"],
+        "message_type": "str",
+        "message_id": "later",
+    }
 
 
 async def test_without_a_logger_findings_go_nowhere(sessions: Sessions) -> None:
