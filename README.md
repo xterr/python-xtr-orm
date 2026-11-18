@@ -168,6 +168,21 @@ before the version and history tables are written, and gives up the transaction 
 revision would roll back; set `transaction_per_migration=True` with it, and keep it for the
 revisions that need it (`CREATE INDEX CONCURRENTLY`).
 
+## Profiler panel
+
+When the [http kernel](../xtr-http-kernel)'s profiler is on — the web profiler turns it on in
+development — the bundle registers an `orm` panel recording every statement a profiled request
+runs, on every connection and on each connection's replicas too: whether it came from a session,
+a connection or a migration. For each statement the panel shows the connection, the SQL, its
+parameters (a value named like a credential — a password, a secret, a token — as `******`),
+whether it ran once per row, how long the driver took, the rows it reports affected and the
+error, if it failed; and, for the request, how many statements ran, their total time, how many
+failed and which ran more than once — the usual sign of a query issued per row.
+
+With the profiler off, nothing is registered and no engine is listened to: it costs nothing. An
+unprofiled request on a profiling application costs one context lookup per statement and keeps
+nothing.
+
 ## Use in an application
 
 Everything adding this package to an application on

@@ -22,6 +22,8 @@ dependencies = [
     "advanced-alchemy>=1.11",
     "alembic>=1.20",
     "sqlalchemy[asyncio]>=2.0.52",
+    # The profiler panel times each statement on its monotonic clock.
+    "xtr-clock>=7.0,<8",
     "xtr-logging-contracts>=7.0,<8",
 ]
 
@@ -53,6 +55,8 @@ dev = [
     "pytest-cov>=7.1",
     "anyio>=4.10",
     "ty>=0.0.83",
+    # The profiler panel's collector, tested against the http kernel's profiler.
+    "xtr-http-kernel>=7.0,<8",
     # Every test runs on SQLite files under the test's own directory: no server.
     "aiosqlite>=0.20",
     "xtr-console>=7.0,<8",

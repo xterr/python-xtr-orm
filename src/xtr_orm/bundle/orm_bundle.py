@@ -26,6 +26,9 @@ With the messenger bundle active and xtr-orm-messenger installed, the
 connections, and each connection's migrator writes the messages tables of the
 ``orm://`` transports on it.
 
+When the http kernel profiles requests, every statement a profiled request
+runs is recorded for its ``orm`` panel.
+
 Nothing connects until a service is first used, and a URL given as
 ``env(...)`` is read only then.
 """
@@ -181,6 +184,21 @@ class OrmBundle(Bundle[OrmConfig]):
             _detach_messenger_middleware()
         if transport:
             _register_orm_transport(services)
+        if bundle_active(builder, "http_kernel"):
+            _register_profiler(services, builder, tuple(config.connections))
+
+
+def _register_profiler(
+    services: ServiceConfigurator, builder: ContainerBuilder, connections: tuple[str, ...]
+) -> None:
+    """Register the profiler panel when the http kernel, active, profiles requests."""
+    # The http kernel is an optional peer, importable only once it is active.
+    from xtr_http_kernel.bundle import profiling_active  # noqa: PLC0415 — optional peer
+
+    if profiling_active(builder):
+        from ._profiler import register_profiler  # noqa: PLC0415 — needs the optional peer
+
+        register_profiler(services, connections)
 
 
 def _detach_messenger_middleware() -> None:

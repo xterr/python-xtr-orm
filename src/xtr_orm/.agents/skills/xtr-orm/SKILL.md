@@ -20,6 +20,8 @@ connection's name. Everything is async; there is no sync counterpart.
 - Write a revision from your models: `orm:migrations:diff --message "add invoices"`. Apply:
   `orm:migrations:migrate`. Read it: `orm:migrations:status`.
 - Without a container: `Migrator(engine, MigrationsConfig(directory="migrations"), Base.metadata)`.
+- With the http kernel's profiler on (the web profiler turns it on in dev), every statement of a
+  profiled request shows in the `orm` panel — nothing to configure; with it off, nothing is added.
 - In an application, with xtr-dependency-injection installed beside the package (it is not a
   dependency): activate `OrmBundle` and inject what it registers. Only `xtr_orm.bundle` needs the
   container.

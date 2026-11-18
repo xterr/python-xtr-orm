@@ -1,0 +1,225 @@
+{#
+  Every statement the request sent to a database, in the order it was sent.
+
+  The statements are read again once the response has left, so one sent while
+  a body was still streaming is counted here too. A statement whose text ran
+  more than once is called out on its own: it is the usual sign of a read
+  issued per row. Bound values named like a credential were kept as `******`
+  when the statement was recorded.
+#}
+{% block toolbar %}
+{% from "@xtr_web_profiler/profiler/toolbar_item.html.j2" import toolbar_item %}
+{% set count = collector.data.get("count") or 0 %}
+{% set broken = collector.data.get("errors") or 0 %}
+{% set repeated = collector.data.get("repeated") or [] %}
+{% set status = "red" if broken else ("yellow" if repeated else "normal") %}
+{% set icon %}
+<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="8" cy="3.9" rx="5.2" ry="2.1"></ellipse>
+  <path d="M2.8 3.9v8.2c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1V3.9"></path>
+  <path d="M2.8 8c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1"></path>
+</svg>
+<span class="xtr-toolbar-value">{{ count }}</span>
+<span class="xtr-toolbar-sep">·</span>
+<span class="xtr-toolbar-value">{{ collector.data.get("duration_ms")|format_ms }}</span>
+{% endset %}
+{% set text %}
+<dl class="xtr-toolbar-rows">
+  <dt>Statements</dt><dd>{{ count }}</dd>
+  <dt>Time</dt><dd>{{ collector.data.get("duration_ms")|format_ms }}</dd>
+  <dt>Failed</dt><dd>{{ broken }}</dd>
+  <dt>Repeated</dt><dd>{{ repeated|length }}</dd>
+  <dt>Connections</dt><dd>{{ (collector.data.get("connections") or [])|join(", ") or "—" }}</dd>
+</dl>
+<p class="xtr-toolbar-note">What the drivers took, the whole request through — a streamed body included.</p>
+{% endset %}
+{{ toolbar_item(collector.name, icon, text, link=panel_url(collector.name), status=status) }}
+{% endblock %}
+
+{% block menu %}
+<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="8" cy="3.9" rx="5.2" ry="2.1"></ellipse>
+  <path d="M2.8 3.9v8.2c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1V3.9"></path>
+  <path d="M2.8 8c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1"></path>
+</svg>
+<span class="xtr-menu-label">Database</span>
+{% if collector.data.get("errors") %}
+<span class="xtr-menu-count xtr-menu-count-red" title="statements that failed">{{ collector.data.get("errors") }}</span>
+{% elif collector.data.get("repeated") %}
+<span class="xtr-menu-count xtr-menu-count-yellow" title="statements that ran more than once">{{ (collector.data.get("repeated"))|length }}</span>
+{% else %}
+<span class="xtr-menu-count">{{ collector.data.get("count") or 0 }}</span>
+{% endif %}
+{% endblock %}
+
+{% block panel %}
+{% set queries = collector.data.get("queries") or [] %}
+{% set repeated = collector.data.get("repeated") or [] %}
+{% set broken = queries|rejectattr("error", "none")|list %}
+{% set names = [] %}
+{% for name in (collector.data.get("connections") or []) %}
+{% if name not in names %}
+{% set _ = names.append(name) %}
+{% endif %}
+{% endfor %}
+{% for query in queries %}
+{% if query.get("connection") not in names %}
+{% set _ = names.append(query.get("connection")) %}
+{% endif %}
+{% endfor %}
+{% macro bound(node) %}
+{% if node is mapping and node.get("kind") in ("mapping", "sequence", "object") and not (node.get("items") or node.get("attributes")) %}
+<span class="xtr-dump-null">none</span>
+{% elif node %}
+{{ node|profiler_dump }}
+{% else %}
+<span class="xtr-dump-null">none</span>
+{% endif %}
+{% endmacro %}
+{% macro statements(tag, rows, nothing) %}
+<div class="xtr-toolstrip">
+  <input class="xtr-filter" type="search" placeholder="Filter these statements…" aria-label="Filter the statements shown" data-xtr-filter="xtr-orm-{{ tag }}" data-xtr-filter-count="xtr-orm-{{ tag }}-count">
+  <span class="xtr-card-note" id="xtr-orm-{{ tag }}-count">{{ rows|length }} of {{ rows|length }}</span>
+</div>
+{% if rows %}
+<div class="xtr-scroll">
+  <table class="xtr-table" id="xtr-orm-{{ tag }}">
+    <thead>
+      <tr>
+        <th scope="col">Connection</th>
+        <th scope="col">Statement</th>
+        <th scope="col">Parameters</th>
+        <th scope="col">Rows</th>
+        <th scope="col">Took</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for query in rows %}
+      <tr>
+        <td class="xtr-cell-mono">{{ query.get("connection") or "—" }}</td>
+        <td class="xtr-cell-mono xtr-break">
+          {{ query.get("statement") or "—" }}
+          {% if query.get("executemany") %}
+          <span class="xtr-badge xtr-badge-violet" title="Sent once per row of parameters">per row</span>
+          {% endif %}
+          {% if query.get("error") is not none %}
+          <div class="xtr-card-note xtr-break">
+            <span class="xtr-badge xtr-badge-red">failed</span>
+            {{ query.get("error") }}
+          </div>
+          {% endif %}
+        </td>
+        <td>{{ bound(query.get("parameters")) }}</td>
+        <td class="xtr-cell-num">{{ query.get("row_count") if query.get("row_count") is not none else "—" }}</td>
+        <td class="xtr-cell-num">{{ query.get("duration_ms")|format_ms }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="xtr-empty">{{ nothing }}</p>
+{% endif %}
+{% endmacro %}
+<h1 class="xtr-panel-title">Database</h1>
+<section class="xtr-card">
+  <div class="xtr-card-body">
+    <table class="xtr-table xtr-table-key">
+      <tbody>
+        <tr><td>Statements</td><td class="xtr-cell-mono">{{ collector.data.get("count") or 0 }}</td></tr>
+        <tr><td>Time</td><td class="xtr-cell-mono">{{ collector.data.get("duration_ms")|format_ms }}</td></tr>
+        <tr><td>Failed</td><td class="xtr-cell-mono">{{ collector.data.get("errors") or 0 }}</td></tr>
+        <tr><td>Repeated</td><td class="xtr-cell-mono">{{ repeated|length }}</td></tr>
+      </tbody>
+    </table>
+    <p class="xtr-card-note">
+      The time is what the drivers took, added up. Statements run one after
+      another add up to about the time the request spent waiting; statements
+      run at once add up to more than it.
+    </p>
+  </div>
+</section>
+<section class="xtr-card">
+  <header class="xtr-card-head">
+    <h2 class="xtr-card-title">Connections</h2>
+    <span class="xtr-card-note">every connection this panel watches, and what went over it</span>
+  </header>
+  <div class="xtr-card-body">
+    {% if names %}
+    <table class="xtr-table">
+      <thead>
+        <tr>
+          <th scope="col">Connection</th>
+          <th scope="col">Statements</th>
+          <th scope="col">Time</th>
+          <th scope="col">Failed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for name in names %}
+        {% set own = queries|selectattr("connection", "equalto", name)|list %}
+        <tr>
+          <td class="xtr-cell-mono xtr-break">{{ name }}</td>
+          <td class="xtr-cell-num">{{ own|length }}</td>
+          <td class="xtr-cell-num">{{ own|sum(attribute="duration_ms")|format_ms }}</td>
+          <td class="xtr-cell-num">{{ own|rejectattr("error", "none")|list|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="xtr-card-note">
+      A connection's statements are those of its primary and of every replica
+      alike: a read sent to a replica is recorded under the name the
+      connection is configured by.
+    </p>
+    {% else %}
+    <p class="xtr-card-note">No connection was watched for this request.</p>
+    {% endif %}
+  </div>
+</section>
+<section class="xtr-card xtr-card-flush xtr-tabs">
+  <div class="xtr-tablist" role="tablist" aria-label="Which statements to show">
+    <button type="button" class="xtr-tab xtr-on" data-xtr-tab="all" role="tab" aria-selected="true">All<span class="xtr-tab-count">{{ queries|length }}</span></button>
+    <button type="button" class="xtr-tab" data-xtr-tab="failed" role="tab" aria-selected="false">Failed<span class="xtr-tab-count">{{ broken|length }}</span></button>
+    <button type="button" class="xtr-tab" data-xtr-tab="repeated" role="tab" aria-selected="false">Repeated<span class="xtr-tab-count">{{ repeated|length }}</span></button>
+  </div>
+  <section class="xtr-pane xtr-pane-flush xtr-on" data-xtr-pane="all" role="tabpanel">
+    {{ statements("all", queries, "This request sent no statement.") }}
+  </section>
+  <section class="xtr-pane xtr-pane-flush" data-xtr-pane="failed" role="tabpanel">
+    {{ statements("failed", broken, "Every statement came back.") }}
+  </section>
+  <section class="xtr-pane" data-xtr-pane="repeated" role="tabpanel">
+    {% if repeated %}
+    <p class="xtr-card-note">
+      One text, sent more than once. Where the runs differ only by their bound
+      values, the statement is being sent per row, and one statement over the
+      whole set would do instead.
+    </p>
+    <table class="xtr-table">
+      <thead>
+        <tr>
+          <th scope="col">Statement</th>
+          <th scope="col">Runs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in repeated %}
+        <tr>
+          <td class="xtr-cell-mono xtr-break">{{ entry.get("statement") or "—" }}</td>
+          <td class="xtr-cell-num">{{ entry.get("count") if entry.get("count") is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="xtr-empty">No statement was sent twice.</p>
+    {% endif %}
+  </section>
+  <p class="xtr-card-foot">
+    The bound values were copied as the statement ran, so a value the
+    application changed afterwards is not what is shown. One named like a
+    credential reads <code class="xtr-mono">******</code>.
+  </p>
+</section>
+{% endblock %}
