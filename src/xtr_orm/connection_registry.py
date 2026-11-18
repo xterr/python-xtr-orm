@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, TypeVar, cast, final
+from typing import TYPE_CHECKING, Final, cast, final
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -22,8 +22,6 @@ __all__ = ["DEFAULT_CONNECTION", "ConnectionRegistry"]
 
 DEFAULT_CONNECTION: Final = "default"
 """The name of the connection used when none is named."""
-
-_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,16 +200,16 @@ class ConnectionRegistry:
         return found
 
 
-def _provider(
-    given: _T | Callable[[], Awaitable[_T]], kind: type[_T]
-) -> Callable[[], Awaitable[_T]]:
+def _provider[T](
+    given: T | Callable[[], Awaitable[T]], kind: type[T]
+) -> Callable[[], Awaitable[T]]:
     """Return an async function giving ``given``: itself when it is one, else wrapping it."""
     if isinstance(given, kind):
         instance = given
 
-        async def provide() -> _T:
+        async def provide() -> T:
             return instance
 
         return provide
     # Anything not of the built kind is the function building it, as the signature says.
-    return cast("Callable[[], Awaitable[_T]]", given)
+    return cast("Callable[[], Awaitable[T]]", given)

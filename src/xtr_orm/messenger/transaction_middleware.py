@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Final, final
+from typing import TYPE_CHECKING, Final, final, override
 from weakref import WeakSet
 
-from typing_extensions import override
 from xtr_messenger import (
     Envelope,
     HandledStamp,

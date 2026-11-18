@@ -9,7 +9,7 @@ hand them over.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeAlias, cast, final
+from typing import TYPE_CHECKING, Final, cast, final
 
 from alembic.config import Config
 from alembic.runtime.environment import EnvironmentContext
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
     from .migrations_config import MigrationsConfig
 
-    MigrationsFn: TypeAlias = Callable[[tuple[str, ...], MigrationContext], Iterable[MigrationStep]]
+    type MigrationsFn = Callable[[tuple[str, ...], MigrationContext], Iterable[MigrationStep]]
     """What the runner asks for the steps to apply, given the current revisions."""
 
 __all__ = ["Environment"]

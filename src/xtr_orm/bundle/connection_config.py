@@ -5,12 +5,11 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final, cast
+from typing import Final, cast, override
 
 from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemyAsyncConfig
 from sqlalchemy import MetaData, make_url
 from sqlalchemy.exc import ArgumentError
-from typing_extensions import override
 
 from xtr_orm.exception import InvalidArgumentError
 from xtr_orm.migrations import MigrationsConfig

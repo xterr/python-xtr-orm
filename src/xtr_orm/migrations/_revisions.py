@@ -77,7 +77,7 @@ def known(directory: ScriptDirectory, versions: Iterable[str]) -> tuple[str, ...
     for version in versions:
         try:
             _ = directory.get_revision(version)
-        except (CommandError, ResolutionError, RevisionError):
+        except CommandError, ResolutionError, RevisionError:
             continue
         found.append(version)
     return tuple(found)

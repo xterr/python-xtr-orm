@@ -3,7 +3,7 @@ name = "xtr-orm"
 version = "7.0.0"
 description = "Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14.4"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
@@ -14,9 +14,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Database",
     "Typing :: Typed",
@@ -24,20 +21,19 @@ classifiers = [
 dependencies = [
     "advanced-alchemy>=1.11",
     "alembic>=1.20",
-    "sqlalchemy[asyncio]>=2.0.41",
-    "typing-extensions>=4.4",
+    "sqlalchemy[asyncio]>=2.0.52",
     "xtr-logging-contracts>=7.0,<8",
 ]
 
 [project.optional-dependencies]
 postgres = [
-    "asyncpg>=0.29",
+    "asyncpg>=0.31",
 ]
 sqlite = [
     "aiosqlite>=0.20",
 ]
 mysql = [
-    "asyncmy>=0.2.9",
+    "asyncmy>=0.2.12",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
@@ -51,11 +47,11 @@ orm = "xtr_orm.recipe"
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.21",
-    "ruff>=0.8",
-    "pytest>=8",
-    "pytest-cov>=5",
-    "anyio>=4.0",
+    "basedpyright>=1.31.7",
+    "ruff>=0.14.7",
+    "pytest>=8.4",
+    "pytest-cov>=7.1",
+    "anyio>=4.10",
     "ty>=0.0.83",
     # Every test runs on SQLite files under the test's own directory: no server.
     "aiosqlite>=0.20",
@@ -76,7 +72,7 @@ build-backend = "uv_build"
 # ─────────────────────────────────────────────────────────────────
 [tool.basedpyright]
 typeCheckingMode = "all"
-pythonVersion = "3.11"
+pythonVersion = "3.14"
 pythonPlatform = "All"
 include = ["src", "tests"]
 exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist", ".tmp"]
@@ -102,7 +98,7 @@ reportPrivateUsage = "none"
 # ruff — select = ["ALL"], minimal justified ignores
 # ─────────────────────────────────────────────────────────────────
 [tool.ruff]
-target-version = "py311"
+target-version = "py314"
 line-length = 100
 src = ["src", "tests"]
 # The revision template is rendered into application code, not run here.

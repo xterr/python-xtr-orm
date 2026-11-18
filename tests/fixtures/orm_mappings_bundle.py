@@ -8,9 +8,8 @@ and the pass registered in ``build`` loads it once every bundle had its say.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, final
+from typing import Final, final, override
 
-from typing_extensions import override
 from xtr_dependency_injection import (
     Bundle,
     ContainerBuilder,

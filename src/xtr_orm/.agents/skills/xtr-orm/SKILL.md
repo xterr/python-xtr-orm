@@ -29,7 +29,7 @@ connection's name. Everything is async; there is no sync counterpart.
   commit.
 - On SQLite, set `MigrationsConfig(render_as_batch=True)` or table alterations cannot be written.
 - SQLite is for development and tests only. For real transactions there (savepoints undone by an
-  outer rollback), pass `engine_options={"connect_args": {"autocommit": False}}` on Python 3.12+.
+  outer rollback), pass `engine_options={"connect_args": {"autocommit": False}}`.
 - Outside debug `hide_parameters` is on: SQL errors leave bound values out. `?hide_parameters=false`
   shows them.
 
@@ -132,10 +132,9 @@ keeps an `OrmMappingsPass`, registers it in `build`, and hands it the driver it 
 migrations use, so `orm:migrations:diff` writes them like the application's own models.
 
 ```python
-from typing import final
+from typing import final, override
 
 from sqlalchemy import Column, Integer, MetaData, Table
-from typing_extensions import override
 from xtr_dependency_injection import (
     Bundle,
     ContainerBuilder,

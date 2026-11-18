@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import TYPE_CHECKING, Final, cast, final
+from typing import TYPE_CHECKING, Final, cast, final, override
 
 from advanced_alchemy.routing import stick_to_primary_var
-from typing_extensions import override
 from xtr_service_contracts import UnitParticipantInterface
 
 if TYPE_CHECKING:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -227,12 +226,6 @@ def _one_address(_: object) -> int:
 
 # ── a caller's own transaction ──────────────────────────────────────────────
 
-# SQLite only rolls a savepoint back on its own with the driver's transaction
-# control off, which Python 3.11's sqlite3 cannot do.
-_savepoints = pytest.mark.skipif(
-    sys.version_info < (3, 12), reason="SQLite savepoints need sqlite3's autocommit=False"
-)
-
 
 @pytest.fixture
 async def caller(database_url: str, migrator: Migrator) -> AsyncIterator[Sessions]:
@@ -246,7 +239,6 @@ async def caller(database_url: str, migrator: Migrator) -> AsyncIterator[Session
     await strict.dispose()
 
 
-@_savepoints
 async def test_a_failing_message_dispatched_after_its_caller_wrote_keeps_the_callers_work(
     caller: Sessions, engine: AsyncEngine
 ) -> None:
@@ -264,7 +256,6 @@ async def test_a_failing_message_dispatched_after_its_caller_wrote_keeps_the_cal
     assert await rows(engine, "select text from note") == [("caller",)]
 
 
-@_savepoints
 async def test_a_succeeding_message_does_not_commit_its_callers_pending_work(
     caller: Sessions, engine: AsyncEngine
 ) -> None:
@@ -279,7 +270,6 @@ async def test_a_succeeding_message_does_not_commit_its_callers_pending_work(
     assert await rows(engine, "select text from note") == []
 
 
-@_savepoints
 async def test_a_message_dispatched_after_an_unflushed_add_keeps_the_callers_object(
     caller: Sessions, engine: AsyncEngine
 ) -> None:
@@ -293,7 +283,6 @@ async def test_a_message_dispatched_after_an_unflushed_add_keeps_the_callers_obj
     assert await rows(engine, "select text from note") == [("message",)]
 
 
-@_savepoints
 async def test_a_received_message_commits_even_if_an_earlier_middleware_began_its_transaction(
     caller: Sessions, engine: AsyncEngine
 ) -> None:

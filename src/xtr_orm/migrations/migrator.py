@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING, Final, TypeVar, final
+from typing import TYPE_CHECKING, Final, final
 
 from alembic.autogenerate import RevisionContext
 from alembic.config import Config
@@ -47,7 +47,6 @@ if TYPE_CHECKING:
 
 __all__ = ["Migrator"]
 
-_T = TypeVar("_T")
 
 _VERSION_LENGTH: Final = 32
 
@@ -464,7 +463,7 @@ class Migrator(LoggerAware):
 
         return await self._connected(work)
 
-    async def _connected(self, work: Callable[[Connection], _T]) -> _T:
+    async def _connected[T](self, work: Callable[[Connection], T]) -> T:
         """Run ``work`` on a connection of its own, committing what it did."""
         async with self._engine.connect() as connection:
             result = await connection.run_sync(work)

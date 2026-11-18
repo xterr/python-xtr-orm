@@ -4,7 +4,7 @@
 
 **Databases for async applications: engines, sessions and versioned schema migrations, configured once per connection.**
 
-<img alt="python 3.11+" src="https://img.shields.io/badge/python-%E2%89%A5%203.11-3776AB?logo=python&logoColor=white">
+<img alt="python 3.14+" src="https://img.shields.io/badge/python-%E2%89%A5%203.14-3776AB?logo=python&logoColor=white">
 <img alt="typed" src="https://img.shields.io/badge/typed-ty%20%2B%20basedpyright-1f6feb">
 <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
@@ -52,8 +52,8 @@ uv add "xtr-messenger[orm]"                           # beside it: the orm:// tr
 
 SQLite is for development and tests, not production. Its Python driver runs in a legacy
 transaction mode by default: it begins no transaction for a read or a `SAVEPOINT`, so an outer
-rollback does not undo a savepoint that was already released. On Python 3.12 and later, the
-driver's own setting gives it real transactions — pass it through the engine options:
+rollback does not undo a savepoint that was already released. The driver's own setting gives
+it real transactions — pass it through the engine options:
 `engine_options={"connect_args": {"autocommit": False}}`.
 
 No xtr package is an extra, and the container is not a dependency: the `OrmBundle` — engines,

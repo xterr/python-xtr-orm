@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Final, final
+from typing import TYPE_CHECKING, Final, final, override
 
 from sqlalchemy.orm import SessionTransactionOrigin
-from typing_extensions import override
 from xtr_logging_contracts import LoggerInterface, NullLogger
 from xtr_messenger import (
     Envelope,
