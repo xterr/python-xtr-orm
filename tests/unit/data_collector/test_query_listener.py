@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import TYPE_CHECKING, Self, cast, final
 
 import anyio
@@ -167,11 +169,17 @@ async def test_a_failure_to_connect_records_no_statement(tmp_path: Path) -> None
     listener = QueryListener()
     listener.listen(unreachable, "default")
     listener.trace.begin()
+    started = set(threading.enumerate())
 
     with pytest.raises(OperationalError):
         async with unreachable.connect():
             pass
     await unreachable.dispose()
+    # aiosqlite stops the worker thread of a connection that failed to open without
+    # waiting for it; finishing after this test's event loop closed, the thread would
+    # raise in a later test. Waited for here, it answers a loop still running.
+    for thread in set(threading.enumerate()) - started:
+        await asyncio.to_thread(thread.join, 5)
 
     assert listener.trace.entries() == ()
 
