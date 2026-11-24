@@ -34,7 +34,7 @@ its engine and session options, where its revisions live — and get:
 - 📜 **A full history**: every revision applied, when, and how long it took.
 - 🧾 **One transaction per message** — with [xtr-messenger](../xtr-messenger), every handler of
   a message shares one session, committed once they all succeeded and rolled back otherwise.
-- 🛠️ **Fifteen console commands**, from `orm:database:create` to `orm:migrations:up-to-date`.
+- 🛠️ **Seventeen console commands**, from `orm:database:create` to `orm:schema:validate`.
 
 ## Install
 
@@ -110,6 +110,9 @@ one (`+1`, `-2`, `ae10+1`), or `latest`, `first` (before every revision), `next`
 | `plan_for_versions(versions, direction)` / `execute(...)` / `execute_sql(...)` | What running exactly those revisions, each up or down, runs — every id resolved and checked / run them, nothing before or after / the SQL it would run |
 | `generate(message)` | Write an empty revision after the latest |
 | `diff(message, allow_empty=, from_empty_schema=)` | Write what differs between the database and the table definitions |
+| `compare()` | What differs between the database and the table definitions — nothing written or run |
+| `apply(comparison)` | Run the comparison against the database, recording nothing |
+| `apply_sql(comparison)` | The SQL `apply()` would run |
 | `dump_schema(message, table_filters=)` | Write a first revision creating every table an existing database has |
 | `add_versions(versions)` / `add_all_versions()` | Record revisions as applied, running nothing |
 | `delete_versions(versions)` / `delete_all_versions()` | Record revisions as not applied, running nothing |
@@ -438,6 +441,8 @@ commands that change the database ask first; `-n` answers yes.
 | `orm:database:create [--if-not-exists]` | Creates the database, through the server's maintenance database |
 | `orm:database:drop --force [--if-exists]` | Drops it; refused without `--force` |
 | `orm:run-sql SQL [--force-fetch]` | Runs a statement as written, committed — a `:word` is never read as a parameter; shows its rows or how many it changed — when the driver can tell |
+| `orm:schema:update [--dump-sql] [--force]` | Brings the database schema to the table definitions, printing or running the changes — no revision written or recorded; orphaned tables are dropped, `MigrationsConfig.include_object` keeps them; without either flag it only describes the changes and exits 1 |
+| `orm:schema:validate [--skip-mapping] [--skip-sync]` | Exits 1 when the mapping does not validate, 2 when the schema differs from the table definitions — 3 for both; `-v` dumps the statements that would bring it in sync |
 | `orm:migrations:current` | The revisions the database is at — `base` for none |
 | `orm:migrations:latest` | The revisions no other follows |
 | `orm:migrations:list` | Every revision with its status, when it ran and how long it took |

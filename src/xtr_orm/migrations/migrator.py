@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import TYPE_CHECKING, Final, final
+from typing import TYPE_CHECKING, Final, cast, final
 
-from alembic.autogenerate import RevisionContext
+from alembic.autogenerate import RevisionContext, produce_migrations
 from alembic.config import Config
+from alembic.operations import Operations
 from sqlalchemy import Column, MetaData, String, Table, delete
 from xtr_logging_contracts import LoggerAware
 
@@ -14,6 +15,7 @@ from xtr_orm.exception import MigrationError
 
 from ._environment import Environment
 from ._history import HistoryRecorder, HistoryTable
+from ._operations import invoke
 from ._revisions import (
     applied,
     available,
@@ -32,6 +34,7 @@ from .executed_migration import ExecutedMigration
 from .migration_plan import MigrationPlan
 from .migration_status import MigrationStatus
 from .migrations_config import MigrationsConfig
+from .schema_comparison import SchemaComparison
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -116,6 +119,11 @@ class Migrator(LoggerAware):
     def config(self) -> MigrationsConfig:
         """Where the revisions are and how they are recorded."""
         return self._config
+
+    @property
+    def metadata(self) -> MetaData | Sequence[MetaData] | None:
+        """The table definitions a diff or a comparison compares the database with."""
+        return self._metadata
 
     async def status(self) -> MigrationStatus:
         """Read where the database stands against the revision files."""
@@ -374,6 +382,74 @@ class Migrator(LoggerAware):
             if written is None:  # pragma: no cover — the operations above are never empty
                 raise MigrationError("No revision was written.")
             return written
+
+        return await self._connected(work)
+
+    async def compare(self) -> SchemaComparison:
+        """Return what differs between the database and the table definitions.
+
+        The database is compared with the table definitions as it is — the
+        revisions it is at play no part — and nothing is written, run or
+        recorded; the version and history tables stay out of the comparison.
+
+        Raises:
+            MigrationError: With no table definitions to compare with.
+        """
+        # None, or definitions holding no table: against nothing the comparison
+        # would drop every table there is.
+        if not tables_of(self._metadata):
+            raise MigrationError(
+                f'The "{self._name}" connection has no table definitions to compare with.',
+            )
+
+        def work(connection: Connection) -> SchemaComparison:
+            with refusing():
+                # produce_migrations types the definitions MetaData, but the autogen
+                # context it builds takes a sequence too.
+                script = produce_migrations(
+                    self._environment.comparison(connection), cast("MetaData", self._metadata)
+                )
+            upgrade = script.upgrade_ops
+            if upgrade is None:  # pragma: no cover — a comparison always has its operations
+                raise MigrationError("No comparison was produced.")
+            # Alembic leaves as_diffs() untyped; the flattened count is all the
+            # comparison reports of it.
+            changes = len(cast("list[object]", upgrade.as_diffs()))
+            return SchemaComparison(changes, upgrade.ops)
+
+        return await self._connected(work)
+
+    async def apply(self, comparison: SchemaComparison) -> None:
+        """Run ``comparison`` against the database, committing it; nothing is recorded.
+
+        The run is one transaction, but a dialect without transactional DDL
+        cannot make it all-or-nothing: what ran before a failure stays.
+        """
+
+        def work(connection: Connection) -> None:
+            context = self._environment.invocation(connection)
+            with refusing():
+                invoke(
+                    Operations(context), comparison, connection, batch=self._config.render_as_batch
+                )
+
+        await self._connected(work)
+
+    async def apply_sql(self, comparison: SchemaComparison) -> str:
+        """Return the SQL running ``comparison`` against the database would produce.
+
+        The operations run against a context that only renders: the database
+        stays as it is, and nothing is recorded.
+        """
+
+        def work(connection: Connection) -> str:
+            output = StringIO()
+            context = self._environment.invocation(connection, output=output)
+            with refusing():
+                invoke(
+                    Operations(context), comparison, connection, batch=self._config.render_as_batch
+                )
+            return output.getvalue()
 
         return await self._connected(work)
 

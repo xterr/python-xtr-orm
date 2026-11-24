@@ -15,6 +15,17 @@ change the database ask first, and `-n` answers yes. `--message` names the revis
 | `orm:database:drop` | `--force` / `-f` — required, the confirmation that everything may be lost; `--if-exists` |
 | `orm:run-sql SQL` | `--force-fetch` — show rows even when the statement does not look like it returns any. The statement is committed |
 
+## The schema
+
+Both commands compare the live database with the table definitions — the revisions it is at play
+no part — and nothing is written or recorded; tables the database has but the definitions do not
+are dropped, unless `MigrationsConfig.include_object` keeps them.
+
+| Command | Flags |
+|---|---|
+| `orm:schema:update` | `--dump-sql` prints the statements bringing the database in sync, and runs nothing; `--force` / `-f` runs them — both together print, then run. With neither it cautions and exits 1; in sync it exits 0 |
+| `orm:schema:validate` | `--skip-mapping` checks the schema only, `--skip-sync` the mapping only. Exits 1 when the mapping does not validate, 2 when the schema differs from the table definitions — 3 for both; `-v` dumps the statements bringing it in sync |
+
 ## Reading where the database stands
 
 | Command | Shows |

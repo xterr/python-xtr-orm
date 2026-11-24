@@ -37,6 +37,8 @@ from .migrations_status_command import MigrationsStatusCommand
 from .migrations_up_to_date_command import MigrationsUpToDateCommand
 from .migrations_version_command import MigrationsVersionCommand
 from .run_sql_command import RunSqlCommand
+from .schema_update_command import SchemaUpdateCommand
+from .schema_validate_command import SchemaValidateCommand
 
 __all__ = [
     "DatabaseCreateCommand",
@@ -54,4 +56,6 @@ __all__ = [
     "MigrationsUpToDateCommand",
     "MigrationsVersionCommand",
     "RunSqlCommand",
+    "SchemaUpdateCommand",
+    "SchemaValidateCommand",
 ]

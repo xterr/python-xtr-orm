@@ -85,6 +85,29 @@ class Environment:
             },
         )
 
+    def comparison(self, connection: Connection) -> MigrationContext:
+        """Return a context comparing the database with the table definitions."""
+        options = self._schema_options()
+        options.update(self._config.context_options)
+        return MigrationContext.configure(connection, opts=options)
+
+    def invocation(
+        self, connection: Connection, *, output: IO[str] | None = None
+    ) -> MigrationContext:
+        """Return a context running the operations a comparison produced.
+
+        With ``output`` the context renders rather than runs: every
+        statement's SQL is written to it.
+        """
+        config = self._config
+        options: dict[str, object] = {}
+        if output is not None:
+            options = {"as_sql": True, "literal_binds": True, "output_buffer": output}
+        if config.transactional_ddl is not None:
+            options["transactional_ddl"] = config.transactional_ddl
+        options.update(config.context_options)
+        return MigrationContext.configure(connection, opts=options)
+
     def run(  # noqa: PLR0913 — every runner option, each passed by keyword
         self,
         connection: Connection,
@@ -120,16 +143,7 @@ class Environment:
         ) as environment:
             options: dict[str, object] = {
                 "connection": connection,
-                "target_metadata": self._metadata,
-                "version_table": config.version_table,
-                "version_table_schema": config.version_table_schema,
                 "transaction_per_migration": config.transaction_per_migration,
-                "compare_type": config.compare_type,
-                "compare_server_default": config.compare_server_default,
-                "render_as_batch": config.render_as_batch,
-                "include_schemas": config.include_schemas,
-                "include_name": _include_name(config.include_name, config.history_table),
-                "include_object": config.include_object,
                 "render_item": _render_item(config.render_item, config.user_module_prefix),
                 # Not "process_revision_directives": the migrator runs it inside its own,
                 # which the runner would call first, before the revision is complete.
@@ -138,9 +152,8 @@ class Environment:
                 "output_buffer": output,
                 "on_version_apply": on_version_apply,
                 "dont_mutate": read_only,
+                **self._schema_options(),
             }
-            if config.transactional_ddl is not None:
-                options["transactional_ddl"] = config.transactional_ddl
             options.update(config.context_options)
             # Forwarded by name, the application's own options included; the
             # runner checks each as it reads it.
@@ -148,6 +161,28 @@ class Environment:
             configure(**options)
             with environment.begin_transaction():
                 environment.run_migrations()
+
+    def _schema_options(self) -> dict[str, object]:
+        """The options every comparison of the database with the definitions shares.
+
+        The runner diffs with exactly these, so a comparison reads what a diff
+        would write.
+        """
+        config = self._config
+        options: dict[str, object] = {
+            "target_metadata": self._metadata,
+            "version_table": config.version_table,
+            "version_table_schema": config.version_table_schema,
+            "compare_type": config.compare_type,
+            "compare_server_default": config.compare_server_default,
+            "render_as_batch": config.render_as_batch,
+            "include_schemas": config.include_schemas,
+            "include_name": _include_name(config.include_name, config.history_table),
+            "include_object": config.include_object,
+        }
+        if config.transactional_ddl is not None:
+            options["transactional_ddl"] = config.transactional_ddl
+        return options
 
 
 def _include_name(

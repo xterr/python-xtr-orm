@@ -1,6 +1,6 @@
 ---
 name: xtr-orm
-description: How to configure database connections, inject async sessions and run versioned schema migrations with xtr-orm. Use when application code needs an AsyncEngine, an AsyncSession, a session per request or per message, read replicas, a DATABASE_URL, a new migration revision, a schema diff against models, the orm:migrations:* or orm:database:* console commands, one transaction per message on a bus, when a library bundle must add tables it builds in code to a connection's definitions, or when adding OrmBundle to an application on xtr-dependency-injection.
+description: How to configure database connections, inject async sessions and run versioned schema migrations with xtr-orm. Use when application code needs an AsyncEngine, an AsyncSession, a session per request or per message, read replicas, a DATABASE_URL, a new migration revision, a schema diff against models, the orm:migrations:*, orm:database:* or orm:schema:* console commands, one transaction per message on a bus, when a library bundle must add tables it builds in code to a connection's definitions, or when adding OrmBundle to an application on xtr-dependency-injection.
 ---
 
 # xtr-orm
@@ -82,6 +82,9 @@ only.
 | `await migrator.execute(versions, Direction.UP)` | Exactly those revisions, nothing before or after. `plan_for_versions(versions, direction)` and `execute_sql(...)` alongside |
 | `migrator.generate("message")` | Writes an empty revision after the latest (not awaited) |
 | `await migrator.diff("message")` | Writes what the table definitions add; takes `allow_empty=`, `from_empty_schema=` |
+| `await migrator.compare()` | What differs between the database and the table definitions — nothing written or run; backs `orm:schema:update` and `orm:schema:validate` |
+| `await migrator.apply(comparison)` | Runs the comparison against the database, recording nothing — `orm:schema:update --force` |
+| `await migrator.apply_sql(comparison)` | The SQL `apply()` would run — `orm:schema:update --dump-sql`, and `orm:schema:validate` at `-v` |
 | `await migrator.dump_schema("message", table_filters=...)` | A first revision creating every table an existing database has |
 | `await migrator.add_versions(v)` / `add_all_versions()` | Records revisions as applied, running nothing |
 | `await migrator.delete_versions(v)` / `delete_all_versions()` | Records them as not applied |
@@ -207,8 +210,10 @@ answers yes.
 | `orm:migrations:up-to-date` | Exits non-zero when revisions are not applied — for a deploy check |
 | `orm:database:create` / `:drop --force` | The database itself |
 | `orm:run-sql SQL` | Runs one statement, committed |
+| `orm:schema:update [--dump-sql] [--force]` | Brings the database schema to the table definitions, printing or running the changes — no revision written or recorded; without either flag it only describes them and exits 1 |
+| `orm:schema:validate [--skip-mapping] [--skip-sync]` | Exits 1 when the mapping does not validate, 2 when the schema differs from the table definitions — 3 for both; `-v` dumps the statements bringing it in sync |
 
-Nine more, and every flag: [references/commands.md](references/commands.md).
+The rest, and every flag: [references/commands.md](references/commands.md).
 
 Deploy order: `orm:migrations:migrate` from **one** place, before the application starts —
 migrations take no lock.

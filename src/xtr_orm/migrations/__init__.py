@@ -16,6 +16,7 @@ from .migration_plan import MigrationPlan
 from .migration_status import MigrationStatus
 from .migrations_config import MigrationsConfig
 from .migrator import Migrator
+from .schema_comparison import SchemaComparison
 
 __all__ = [
     "AvailableMigration",
@@ -26,4 +27,5 @@ __all__ = [
     "MigrationStatus",
     "MigrationsConfig",
     "Migrator",
+    "SchemaComparison",
 ]

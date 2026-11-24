@@ -62,3 +62,21 @@ async def test_every_command_acts_on_the_connection_it_is_given(
     assert 'for connection named "reports"' in output(tester)
     assert (tmp_path / "reports.sqlite").exists()
     assert not (tmp_path / "app.sqlite").exists()
+
+
+async def test_the_schema_is_updated_and_validated_without_revisions(
+    tester: ApplicationTester, tmp_path: Path
+) -> None:
+    assert await tester.execute(["orm:schema:validate"]) == ExitCode.INVALID
+    assert await tester.execute(["orm:schema:update", "--force"]) == ExitCode.SUCCESS
+    assert await tester.execute(["orm:schema:validate"]) == ExitCode.SUCCESS
+
+    assert await tester.execute(["orm:migrations:up-to-date"]) == ExitCode.SUCCESS
+    assert not (tmp_path / "migrations").exists()
+    assert (
+        await tester.execute(
+            ["orm:run-sql", "select name from sqlite_master where type = 'table' order by name"]
+        )
+        == ExitCode.SUCCESS
+    )
+    assert table_rows(tester) == [["name"], ["author"], ["book"]]

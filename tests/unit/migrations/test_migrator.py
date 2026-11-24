@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, final
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, Table
+from alembic.operations.ops import CreateTableOp
+from sqlalchemy import Column, Integer, MetaData, Table, text
+from xtr_orm_messenger.transport.messages_table_driver import MessagesTableDriver
 
 from tests.support.database import rows, table_names
 from tests.support.revisions import write_revision
@@ -709,6 +711,167 @@ class _Money(Integer):
 async def _create_catalogue(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(METADATA.create_all)
+
+
+async def _execute(engine: AsyncEngine, sql: str) -> None:
+    """Run raw DDL against the test database, committed."""
+    async with engine.begin() as connection:
+        _ = await connection.execute(text(sql))
+
+
+async def test_a_compare_finds_the_tables_the_database_lacks(
+    migrator: Migrator, engine: AsyncEngine
+) -> None:
+    comparison = await migrator.compare()
+
+    assert not comparison.is_empty
+    assert comparison.changes == 3  # the author and book tables, and the book title index
+    assert comparison.dropped_tables == ()
+    assert await table_names(engine) == set()
+
+
+async def test_a_compare_is_empty_when_the_database_matches_the_definitions(
+    migrator: Migrator, engine: AsyncEngine
+) -> None:
+    await _create_catalogue(engine)
+
+    comparison = await migrator.compare()
+
+    assert comparison.is_empty
+    assert comparison.changes == 0
+
+
+async def test_a_compare_finds_orphaned_tables_to_drop(
+    migrator: Migrator, engine: AsyncEngine
+) -> None:
+    await _create_catalogue(engine)
+    await _execute(engine, "create table legacy (id integer not null, primary key (id))")
+
+    comparison = await migrator.compare()
+
+    assert comparison.dropped_tables == ("legacy",)
+
+
+async def test_a_compare_leaves_the_orphans_the_object_filter_keeps(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    await _create_catalogue(engine)
+    await _execute(engine, "create table legacy (id integer not null, primary key (id))")
+
+    def include_object(
+        obj: object, name: str | None, kind: str, reflected: bool, comparing: bool
+    ) -> bool:
+        del obj, reflected, comparing
+        return kind != "table" or name != "legacy"
+
+    config = MigrationsConfig(directory=str(migrations_directory), include_object=include_object)
+
+    comparison = await Migrator(engine, config, METADATA).compare()
+
+    assert comparison.is_empty
+
+
+async def test_the_version_and_history_tables_stay_out_of_a_compare(migrator: Migrator) -> None:
+    _ = await migrator.diff("create the catalogue")
+    _ = await migrator.migrate()
+
+    comparison = await migrator.compare()
+
+    assert comparison.is_empty
+
+
+async def test_a_compare_without_table_definitions_is_refused(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    bare = Migrator(engine, MigrationsConfig(directory=str(migrations_directory)))
+
+    with pytest.raises(MigrationError, match="no table definitions"):
+        _ = await bare.compare()
+
+
+async def test_a_compare_with_empty_table_definitions_is_refused(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    bare = Migrator(engine, MigrationsConfig(directory=str(migrations_directory)), MetaData())
+
+    with pytest.raises(MigrationError, match="no table definitions"):
+        _ = await bare.compare()
+
+
+async def test_a_compare_sees_the_tables_a_mapping_driver_added(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    metadata = MetaData()
+    _ = MessagesTableDriver("messenger_messages").load_metadata(metadata)
+    config = MigrationsConfig(directory=str(migrations_directory))
+
+    comparison = await Migrator(engine, config, metadata).compare()
+
+    creates = [op for op in comparison.ops if isinstance(op, CreateTableOp)]
+    assert [op.table_name for op in creates] == ["messenger_messages"]
+
+
+async def test_the_metadata_property_returns_what_the_migrator_was_given(
+    migrator: Migrator, engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    bare = Migrator(engine, MigrationsConfig(directory=str(migrations_directory)))
+
+    assert migrator.metadata is METADATA
+    assert bare.metadata is None
+
+
+async def test_apply_runs_the_compared_operations(migrator: Migrator, engine: AsyncEngine) -> None:
+    await migrator.apply(await migrator.compare())
+
+    assert await table_names(engine) == {"author", "book"}
+
+
+async def test_apply_sql_renders_without_running(migrator: Migrator, engine: AsyncEngine) -> None:
+    sql = await migrator.apply_sql(await migrator.compare())
+
+    assert "CREATE TABLE author" in sql
+    assert "CREATE TABLE book" in sql
+    assert await table_names(engine) == set()
+
+
+async def test_apply_sql_renders_a_batch_alter(migrator: Migrator, engine: AsyncEngine) -> None:
+    await _create_catalogue(engine)
+    await _execute(engine, "alter table book add column legacy varchar(10)")
+
+    sql = await migrator.apply_sql(await migrator.compare())
+
+    assert "_alembic_tmp_book" in sql
+
+
+async def test_apply_drops_a_column_in_a_batch(migrator: Migrator, engine: AsyncEngine) -> None:
+    await _create_catalogue(engine)
+    await _execute(engine, "alter table book add column legacy varchar(10)")
+
+    await migrator.apply(await migrator.compare())
+
+    columns = [row[1] for row in await rows(engine, "pragma table_info(book)")]
+    assert "title" in columns
+    assert "legacy" not in columns
+
+
+async def test_apply_drops_a_column_without_a_batch(
+    engine: AsyncEngine, migrations_directory: Path
+) -> None:
+    migrator = Migrator(engine, MigrationsConfig(directory=str(migrations_directory)), METADATA)
+    await _create_catalogue(engine)
+    await _execute(engine, "insert into author (id, name) values (1, 'a')")
+    await _execute(engine, "insert into book (id, title, author_id) values (1, 't', 1)")
+    await _execute(engine, "alter table book add column legacy varchar(10)")
+
+    comparison = await migrator.compare()
+
+    assert comparison.changes == 1
+    await migrator.apply(comparison)
+
+    columns = [row[1] for row in await rows(engine, "pragma table_info(book)")]
+    assert "title" in columns
+    assert "legacy" not in columns
+    assert await rows(engine, "select id, title, author_id from book") == [(1, "t", 1)]
 
 
 def _read(path: str) -> str:

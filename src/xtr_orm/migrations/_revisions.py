@@ -185,10 +185,11 @@ def _as_tuple(value: str | Sequence[str] | None) -> tuple[str, ...]:
 
 @contextmanager
 def refusing() -> Generator[None]:
-    """Turn the revision reader's own errors into :class:`MigrationError`."""
+    """Turn the migration tooling's refusals into :class:`MigrationError`."""
     try:
         yield
-    except (CommandError, ResolutionError, RevisionError) as error:
+    except (CommandError, ResolutionError, RevisionError, ValueError) as error:
+        # ValueError is how a comparison refuses definitions naming one table twice.
         raise MigrationError(str(error)) from error
     except KeyError as error:
         # The reader indexes its map by the ids revisions name; one naming a
