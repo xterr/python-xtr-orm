@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Final, final
 
-from advanced_alchemy.base import metadata_registry
 from sqlalchemy import MetaData
 from xtr_dependency_injection import ContainerBuilder
 
@@ -199,9 +198,7 @@ def _definitions_of(name: str, connection: ConnectionConfig) -> MetaData:
     Raises:
         InvalidArgumentError: When the connection keeps several sets.
     """
-    definitions = connection.metadata
-    if definitions is None:
-        return metadata_registry.get(connection.bind_key)
+    definitions = connection.table_definitions()
     if isinstance(definitions, MetaData):
         return definitions
     raise InvalidArgumentError(

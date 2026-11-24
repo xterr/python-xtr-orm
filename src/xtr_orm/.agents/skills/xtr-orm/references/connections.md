@@ -14,6 +14,10 @@
 | `metadata` | `None` | The table definitions a diff compares the database with; those registered for `bind_key` when `None` |
 | `migrations` | `None` | A `MigrationsConfig`; `%kernel.project_dir%/migrations` for the default connection, `.../migrations/<name>` for any other, when `None` |
 
+`connection.table_definitions()` returns the definitions in force — `metadata`, else those
+registered for `bind_key` — the ones the connection's migrations compare the database with. Use
+it rather than repeating that rule.
+
 An unknown key in `engine_options`, `session_options` or `alchemy_options` raises
 `InvalidArgumentError` at configuration time, naming the options that exist. Options the bundle
 sets itself — `connection_string`, `engine_config`, `session_config`, `bind_key`, `metadata`,

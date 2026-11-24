@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, cast, override
 
+from advanced_alchemy.base import metadata_registry
 from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemyAsyncConfig
 from sqlalchemy import MetaData, make_url
 from sqlalchemy.exc import ArgumentError
@@ -216,6 +217,18 @@ class ConnectionConfig:
         _check_options(
             "alchemy", SQLAlchemyAsyncConfig, self.alchemy_options, exclude=_SET_BY_THE_BUNDLE
         )
+
+    def table_definitions(self) -> MetaData | Sequence[MetaData]:
+        """Return the table definitions this connection's migrations compare the database with.
+
+        Its own :attr:`metadata` when set, else those advanced-alchemy
+        registers for its :attr:`bind_key`. Read from the configuration as
+        written: neither rides on the URL, which may still be an ``env(...)``
+        placeholder.
+        """
+        if self.metadata is not None:
+            return self.metadata
+        return metadata_registry.get(self.bind_key)
 
     def with_url_options(self) -> ConnectionConfig:
         """Return this connection with the options its URL carries merged into it.

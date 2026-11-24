@@ -41,7 +41,6 @@ from importlib.util import find_spec
 from operator import contains
 from typing import Annotated, Final, cast, final, override
 
-from advanced_alchemy.base import metadata_registry
 from advanced_alchemy.config import AsyncSessionConfig, EngineConfig, SQLAlchemyAsyncConfig
 from advanced_alchemy.config.routing import EngineConfig as ReplicaEngine
 from advanced_alchemy.config.routing import RoutingConfig, RoutingStrategy
@@ -389,11 +388,7 @@ def _migrator_factory(
 
     async def migrator(container: ContainerInterface) -> Migrator:
         resolved = connection.with_url_options()
-        metadata = (
-            resolved.metadata
-            if resolved.metadata is not None
-            else metadata_registry.get(resolved.bind_key)
-        )
+        metadata = resolved.table_definitions()
         if messages_tables:
             await _map_messages_tables(container, name, default, metadata)
         built = Migrator(

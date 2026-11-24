@@ -44,6 +44,7 @@ uv add "xtr-orm[postgres]" xtr-dependency-injection   # + the container, for the
 uv add xtr-console                                    # beside it: the orm:* commands
 uv add xtr-messenger                                  # beside it: the message bus middleware
 uv add "xtr-messenger[orm]"                           # beside it: the orm:// transport too
+uv add --dev xtr-orm-fixtures                         # beside it: seed databases from fixture classes
 ```
 
 | Extra | Brings | For |
@@ -308,6 +309,10 @@ every message is a unit of work: its handlers share one `AsyncSession` per conne
 | `bind_key` | `None` | Which models belong to this database, when they declare several |
 | `metadata` | `None` | The table definitions a diff compares with; advanced-alchemy's for `bind_key` when `None` |
 | `migrations` | `None` | `MigrationsConfig`; `migrations` in the project directory for the default connection, `migrations/<name>` for any other, when `None` |
+
+`connection.table_definitions()` returns the table definitions in force for a connection —
+its `metadata`, else advanced-alchemy's for its `bind_key` — the ones its migrations compare
+the database with, for any library that must act on the same tables.
 
 ### Options in the URL
 

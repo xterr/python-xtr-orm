@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from advanced_alchemy.base import metadata_registry
+from sqlalchemy import MetaData
 from xtr_dependency_injection import env
 
 from xtr_orm.bundle import ConnectionConfig
@@ -172,3 +174,15 @@ def test_repr_masks_connect_args_secrets() -> None:
     assert "require" not in shown
     assert "'connect_args': {'password': '***', 'ssl': '***'}" in shown
     assert "'pool_size': 5" in shown
+
+
+def test_the_table_definitions_are_the_connection_s_own_when_set() -> None:
+    own = MetaData()
+
+    assert ConnectionConfig(bind_key="reports", metadata=own).table_definitions() is own
+
+
+def test_the_table_definitions_are_those_of_the_bind_key_otherwise() -> None:
+    config = ConnectionConfig(bind_key="table_definitions_test")
+
+    assert config.table_definitions() is metadata_registry.get("table_definitions_test")
